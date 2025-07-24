@@ -1,114 +1,227 @@
-# app.py - Working Render Deployment
+# app.py - AWS EC2 Flask API with Real MediaPipe Analysis
 import os
+import cv2
 import json
-import time
-import random
+import numpy as np
+import mediapipe as mp
+from collections import deque
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import tempfile
+import time
+import logging
 
-# Create Flask app
+# ================= CONFIGURATION FROM YOUR SOURCE =================
+MOVE_PX_MIN = 30            # eye must move ≥ this to call it "tracking"
+RATIO_THRESH = 0.30         # lazy‑eye ratio threshold (≤ → flag)
+HIST_FRAMES = 60            # frames stored per sweep
+
+# Flask configuration
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+ALLOWED_EXTENSIONS = {'webm', 'mp4', 'avi', 'mov'}
+
+# ================= FLASK APP SETUP =================
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB limit
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # CORS configuration for cross-origin requests
 CORS(app, origins=[
     "http://localhost:3000",          # Local development
-    "https://*.vercel.app",           # Vercel deployments
-    "https://*.onrender.com",         # Render services
+    "https://*.vercel.app",           # Vercel frontend
+    "https://*.amazonaws.com",        # AWS domains
     "*"                               # Allow all for demo
 ])
 
-print("🚀 Eye Tracker API starting...")
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-def simulate_eye_analysis(file_size_mb, filename="video.webm"):
+print("🚀 AWS EC2 Eye Tracker API with Real MediaPipe Analysis")
+
+# ================= YOUR ORIGINAL ALGORITHM =================
+def detect_lazy_eye(hist, move_px=MOVE_PX_MIN, ratio=RATIO_THRESH):
     """
-    Simulate realistic eye tracking analysis
-    Returns the same format as real MediaPipe analysis
+    Your original lazy eye detection algorithm
     """
-    # Simulate processing time
-    processing_time = min(file_size_mb * 0.3, 5)  # Max 5 seconds
-    time.sleep(min(processing_time, 2))  # Actually wait for realism
+    if len(hist) < 15: 
+        return False, 0.0, 0.0
     
-    # Estimate video properties based on file size
-    estimated_duration = min(file_size_mb * 10, 60)  # Rough estimate
-    fps = 30.0
-    total_frames = int(estimated_duration * fps)
+    l = np.array([p[0] for p in hist], dtype=float)
+    r = np.array([p[1] for p in hist], dtype=float)
+    disp_l = np.linalg.norm(l[-1] - l[0])
+    disp_r = np.linalg.norm(r[-1] - r[0])
+    fast, slow = max(disp_l, disp_r), min(disp_l, disp_r)
     
-    # Simulate frame analysis
-    frames_analyzed = total_frames
-    frames_with_face = int(total_frames * random.uniform(0.75, 0.95))  # 75-95% face detection
-    face_detection_rate = (frames_with_face / frames_analyzed) * 100 if frames_analyzed > 0 else 0
-    
-    # Simulate lazy eye detection (20% chance for demo purposes)
-    lazy_eye_probability = 0.2
-    has_lazy_eye = random.random() < lazy_eye_probability
-    lazy_eye_detections = 0
-    detection_events = []
-    
-    if has_lazy_eye:
-        lazy_eye_detections = random.randint(1, 4)
-        for i in range(lazy_eye_detections):
-            timestamp = random.uniform(3, estimated_duration - 3)
-            left_disp = random.uniform(25, 80)
-            right_disp = random.uniform(8, 25)
+    is_lazy = fast > move_px and slow < fast * ratio
+    return is_lazy, disp_l, disp_r
+
+def analyze_video_with_mediapipe(video_path):
+    """
+    Real video analysis using your MediaPipe algorithm
+    """
+    try:
+        logger.info(f"📹 Starting MediaPipe analysis on: {video_path}")
+        
+        # MediaPipe setup (same as your code)
+        mesh = mp.solutions.face_mesh.FaceMesh(
+            refine_landmarks=True, 
+            max_num_faces=1,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+        LEFT_IRIS, RIGHT_IRIS = 468, 473
+        
+        # Open video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise Exception("Could not open video file")
+        
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = frame_count / fps if fps > 0 else 0
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        logger.info(f"📊 Video: {duration:.1f}s, {frame_count} frames, {fps:.1f}fps, {width}x{height}")
+        
+        # Analysis variables (same as your code)
+        hist = deque(maxlen=HIST_FRAMES)
+        frames_analyzed = 0
+        frames_with_face = 0
+        lazy_eye_detections = 0
+        detection_events = []
+        
+        # Simulate car movement for analysis (based on your bounce logic)
+        car_x = 0
+        car_speed = 7  # pixels per frame from your code
+        car_width = 100
+        bounce_count = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            frames_analyzed += 1
+            h, w = frame.shape[:2]
             
-            detection_events.append({
-                "timestamp": round(timestamp, 1),
-                "left_displacement": round(left_disp, 1),
-                "right_displacement": round(right_disp, 1),
-                "message": f"Asymmetric eye movement detected - Left: {left_disp:.1f}px, Right: {right_disp:.1f}px"
-            })
-    
-    # Risk assessment based on detections
-    if lazy_eye_detections >= 3:
-        risk_level = "HIGH"
-        confidence = "High"
-        recommendation = "Immediate consultation with eye care professional recommended"
-    elif lazy_eye_detections >= 1:
-        risk_level = "MEDIUM"
-        confidence = "Medium"
-        recommendation = "Monitor closely and consider professional evaluation"
-    else:
-        risk_level = "LOW"
-        confidence = "High" if face_detection_rate > 80 else "Medium"
-        recommendation = "No significant issues detected in this assessment"
-    
-    return {
-        "video_info": {
-            "duration": round(estimated_duration, 1),
-            "fps": fps,
-            "total_frames": total_frames
-        },
-        "analysis": {
-            "frames_analyzed": frames_analyzed,
-            "frames_with_face": frames_with_face,
-            "face_detection_rate": round(face_detection_rate, 1),
-            "lazy_eye_detections": lazy_eye_detections,
-            "detection_events": detection_events
-        },
-        "risk_assessment": {
-            "level": risk_level,
-            "confidence": confidence,
-            "recommendation": recommendation
-        }
-    }
+            # MediaPipe processing (exactly like your code)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = mesh.process(rgb)
 
-# Routes
+            if results.multi_face_landmarks:
+                frames_with_face += 1
+                
+                # Extract iris positions (same as your code)
+                pts = results.multi_face_landmarks[0].landmark
+                li = pts[LEFT_IRIS]
+                ri = pts[RIGHT_IRIS]
+                li_px = np.array([li.x * w, li.y * h])
+                ri_px = np.array([ri.x * w, ri.y * h])
+                hist.append((li_px.copy(), ri_px.copy()))
+            
+            # Simulate car bounce logic from your code
+            car_x += car_speed
+            if car_x + car_width > w or car_x < 0:
+                # Bounce detected - evaluate lazy eye (your original logic)
+                car_speed = -car_speed
+                bounce_count += 1
+                
+                # Apply your detection algorithm
+                is_lazy, disp_l, disp_r = detect_lazy_eye(hist)
+                
+                if is_lazy:
+                    lazy_eye_detections += 1
+                    timestamp = frames_analyzed / fps
+                    
+                    detection_events.append({
+                        "timestamp": round(timestamp, 1),
+                        "left_displacement": round(float(disp_l), 1),
+                        "right_displacement": round(float(disp_r), 1),
+                        "message": f"Lazy eye detected at bounce #{bounce_count}",
+                        "bounce_number": bounce_count
+                    })
+                    
+                    logger.info(f"⚠️ Lazy eye detected at {timestamp:.1f}s - L:{disp_l:.1f}px, R:{disp_r:.1f}px")
+                
+                # Clear history after evaluation (your original logic)
+                hist.clear()
+                car_x = max(0, min(car_x, w - car_width))
+        
+        # Cleanup
+        cap.release()
+        mesh.close()
+        
+        # Calculate results
+        face_detection_rate = (frames_with_face / frames_analyzed * 100) if frames_analyzed > 0 else 0
+        
+        # Risk assessment based on your algorithm results
+        if lazy_eye_detections >= 3:
+            risk_level = "HIGH"
+            confidence = "High"
+            recommendation = "Multiple detections found. Consult an eye care professional immediately."
+        elif lazy_eye_detections >= 1:
+            risk_level = "MEDIUM"
+            confidence = "Medium"
+            recommendation = "Asymmetric eye movement detected. Consider professional evaluation."
+        else:
+            risk_level = "LOW"
+            confidence = "High" if face_detection_rate > 70 else "Medium"
+            recommendation = "No significant asymmetric eye movements detected."
+        
+        results = {
+            "video_info": {
+                "duration": round(duration, 1),
+                "fps": round(fps, 1),
+                "total_frames": frame_count,
+                "resolution": f"{width}x{height}",
+                "bounces_analyzed": bounce_count
+            },
+            "analysis": {
+                "frames_analyzed": frames_analyzed,
+                "frames_with_face": frames_with_face,
+                "face_detection_rate": round(face_detection_rate, 1),
+                "lazy_eye_detections": lazy_eye_detections,
+                "detection_events": detection_events,
+                "algorithm": "mediapipe_with_bounce_detection"
+            },
+            "risk_assessment": {
+                "level": risk_level,
+                "confidence": confidence,
+                "recommendation": recommendation
+            }
+        }
+        
+        logger.info(f"✅ Analysis complete: {lazy_eye_detections} detections in {bounce_count} bounces")
+        return results
+        
+    except Exception as e:
+        logger.error(f"❌ Analysis error: {str(e)}")
+        return {"error": f"MediaPipe analysis failed: {str(e)}"}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# ================= FLASK ROUTES =================
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
-        "service": "👁️ Eye Tracker API",
+        "service": "👁️ Real Eye Tracker API",
+        "version": "2.0",
         "status": "operational",
-        "version": "1.0.0",
-        "deployment": "render",
-        "type": "demonstration",
+        "deployment": "aws-ec2",
+        "algorithm": "MediaPipe + Original Lazy Eye Detection",
+        "parameters": {
+            "move_threshold_px": MOVE_PX_MIN,
+            "ratio_threshold": RATIO_THRESH,
+            "history_frames": HIST_FRAMES
+        },
         "endpoints": {
             "health": "GET /health",
             "test": "GET /test", 
-            "upload": "POST /upload",
-            "ping": "GET /ping"
-        },
-        "note": "Simulated analysis for demonstration purposes"
+            "upload": "POST /upload"
+        }
     })
 
 @app.route('/health', methods=['GET'])
@@ -116,31 +229,33 @@ def health():
     return jsonify({
         "status": "healthy",
         "timestamp": int(time.time()),
-        "deployment": "render",
+        "deployment": "aws-ec2",
         "service": "eye-tracker-api",
-        "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
-        "memory_usage": "normal",
-        "uptime": "running"
+        "mediapipe": "available",
+        "opencv": cv2.__version__,
+        "analysis": "real"
     })
 
 @app.route('/test', methods=['GET'])
 def test():
     try:
-        # Test basic functionality
-        test_result = simulate_eye_analysis(1.0, "test.webm")
+        # Test MediaPipe
+        mp_face_mesh = mp.solutions.face_mesh
+        mesh = mp_face_mesh.FaceMesh(max_num_faces=1)
+        mesh.close()
+        
+        # Test OpenCV
+        test_frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        gray = cv2.cvtColor(test_frame, cv2.COLOR_BGR2GRAY)
         
         return jsonify({
             "status": "✅ ALL SYSTEMS OPERATIONAL",
-            "deployment": "render",
-            "flask": "working",
-            "cors": "enabled",
-            "simulation": "functional",
-            "test_analysis": {
-                "completed": True,
-                "risk_level": test_result["risk_assessment"]["level"],
-                "detections": test_result["analysis"]["lazy_eye_detections"]
-            },
-            "message": "API ready to process video uploads!"
+            "deployment": "aws-ec2",
+            "mediapipe": f"OK - Face detection ready",
+            "opencv": f"OK - {cv2.__version__}",
+            "numpy": f"OK - {np.__version__}",
+            "algorithm": "Original lazy eye detection loaded",
+            "message": "Ready for real video analysis!"
         })
     except Exception as e:
         return jsonify({
@@ -151,55 +266,40 @@ def test():
 @app.route('/upload', methods=['POST'])
 def upload_video():
     start_time = time.time()
+    temp_path = None
     
     try:
         # Validate request
         if 'video' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No video file in request'
-            }), 400
+            return jsonify({'success': False, 'error': 'No video file provided'}), 400
         
         file = request.files['video']
+        if file.filename == '' or not allowed_file(file.filename):
+            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
         
-        if file.filename == '':
-            return jsonify({
-                'success': False,
-                'error': 'No file selected'
-            }), 400
+        # Save to temp file
+        video_bytes = file.read()
+        file_size_mb = len(video_bytes) / (1024 * 1024)
         
-        # Get file info
-        file_data = file.read()
-        file_size_mb = len(file_data) / (1024 * 1024)
+        logger.info(f"📤 Received: {file.filename} ({file_size_mb:.2f} MB)")
         
-        print(f"📹 Processing: {file.filename}")
-        print(f"📊 Size: {file_size_mb:.2f} MB")
-        
-        # Validate file size
         if file_size_mb > 50:
-            return jsonify({
-                'success': False,
-                'error': f'File too large: {file_size_mb:.1f}MB (maximum: 50MB)'
-            }), 413
+            return jsonify({'success': False, 'error': f'File too large: {file_size_mb:.1f}MB'}), 413
         
-        # Validate file type (basic check)
-        allowed_extensions = {'.webm', '.mp4', '.avi', '.mov'}
-        file_ext = os.path.splitext(file.filename.lower())[1]
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
+            temp_file.write(video_bytes)
+            temp_path = temp_file.name
         
-        if file_ext not in allowed_extensions:
-            return jsonify({
-                'success': False,
-                'error': f'Unsupported file type: {file_ext}. Supported: {", ".join(allowed_extensions)}'
-            }), 400
+        # Perform real MediaPipe analysis
+        logger.info("🔍 Starting real MediaPipe analysis...")
+        analysis_results = analyze_video_with_mediapipe(temp_path)
         
-        # Perform simulated analysis
-        print("🔍 Starting eye tracking analysis...")
-        analysis_results = simulate_eye_analysis(file_size_mb, file.filename)
+        if "error" in analysis_results:
+            return jsonify({'success': False, **analysis_results}), 500
         
         processing_time = time.time() - start_time
-        print(f"✅ Analysis completed in {processing_time:.2f} seconds")
-        print(f"🎯 Risk level: {analysis_results['risk_assessment']['level']}")
-        print(f"👁️ Detections: {analysis_results['analysis']['lazy_eye_detections']}")
+        logger.info(f"✅ Real analysis completed in {processing_time:.2f} seconds")
         
         return jsonify({
             'success': True,
@@ -207,20 +307,23 @@ def upload_video():
             'size_mb': round(file_size_mb, 2),
             'processing_time_seconds': round(processing_time, 2),
             'analysis': analysis_results,
-            'message': 'Video analysis completed successfully',
-            'deployment': 'render',
-            'timestamp': int(time.time())
+            'message': 'Real MediaPipe analysis completed!',
+            'deployment': 'aws-ec2',
+            'algorithm': 'original-mediapipe-lazy-eye-detection'
         })
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Upload error: {error_msg}")
-        
-        return jsonify({
-            'success': False,
-            'error': f'Processing failed: {error_msg}',
-            'timestamp': int(time.time())
-        }), 500
+        logger.error(f"❌ Upload error: {str(e)}")
+        return jsonify({'success': False, 'error': f'Processing failed: {str(e)}'}), 500
+    
+    finally:
+        # Clean up temp file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+                logger.info("🗑️ Temp file cleaned up")
+            except:
+                pass
 
 @app.route('/ping', methods=['GET'])
 def ping():
@@ -229,37 +332,26 @@ def ping():
 # Error handlers
 @app.errorhandler(413)
 def too_large(e):
-    return jsonify({
-        'success': False,
-        'error': 'File too large (max 50MB)'
-    }), 413
+    return jsonify({'success': False, 'error': 'File too large (max 50MB)'}), 413
 
 @app.errorhandler(404)
 def not_found(e):
-    return jsonify({
-        'success': False,
-        'error': 'Endpoint not found'
-    }), 404
+    return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
 
 @app.errorhandler(500)
 def internal_error(e):
-    return jsonify({
-        'success': False,
-        'error': 'Internal server error'
-    }), 500
+    return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
-# Main entry point
+# ================= MAIN ENTRY POINT =================
 if __name__ == '__main__':
-    # Get port from environment variable (Render sets this)
+    # AWS EC2 configuration
     port = int(os.environ.get('PORT', 5000))
-    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    host = '0.0.0.0'  # Important for EC2
+    debug = os.environ.get('FLASK_ENV') == 'development'
     
-    print(f"🌐 Starting server on port {port}")
-    print(f"🔧 Debug mode: {debug_mode}")
-    print(f"🎯 Environment: {os.environ.get('RENDER_SERVICE_NAME', 'local')}")
+    logger.info(f"🌐 Starting AWS EC2 server on {host}:{port}")
+    logger.info(f"🔧 Debug mode: {debug}")
+    logger.info(f"🧠 MediaPipe ready for real analysis")
+    logger.info(f"👁️ Algorithm: Original lazy eye detection")
     
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=debug_mode
-    )
+    app.run(host=host, port=port, debug=debug)
