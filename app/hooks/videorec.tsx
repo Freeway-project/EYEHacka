@@ -55,10 +55,10 @@ export const useVideoRecording = (): VideoRecordingHook => {
   const getApiUrl = () => {
     // Production: Use your deployed Render API URL
     if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-      return 'https://YOUR_RENDER_API_URL.onrender.com'  // 👈 REPLACE WITH YOUR RENDER URL
+      return 'http://44.249.173.223:5000'  // 👈 REPLACE WITH YOUR RENDER URL
     }
     // Development: Use local API
-    return 'http://localhost:5000'
+    return 'http://44.249.173.223:5000'
   }
 
   const startRecording = useCallback(async () => {
