@@ -55,10 +55,10 @@ export const useVideoRecording = (): VideoRecordingHook => {
   const getApiUrl = () => {
     // Production: Use your deployed Render API URL
     if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-      return 'http://44.249.173.223:5000'  // 👈 REPLACE WITH YOUR RENDER URL
+      return 'https://eyehacka.onrender.com'  // 👈 REPLACE WITH YOUR RENDER URL
     }
     // Development: Use local API
-    return 'http://44.249.173.223:5000'
+    return 'https://eyehacka.onrender.com'
   }
 
   const startRecording = useCallback(async () => {
