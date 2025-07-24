@@ -21,17 +21,18 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const [eyeDirection, setEyeDirection] = useState<'center' | 'left' | 'right' | 'up' | 'down'>('center')
   const videoRef = useRef<HTMLVideoElement>(null)
   
-const {
-  isRecording,
-  hasPermission,
-  permissionError,
-  startRecording,
-  stopRecording,
-  videoPreview,
-  videoStream,
-  analysisResults,    // NEW
-  isAnalyzing        // NEW
-} = useVideoRecording()
+  const {
+    isRecording,
+    hasPermission,
+    permissionError,
+    startRecording,
+    stopRecording,
+    videoPreview,
+    videoStream,
+    analysisResults,
+    isAnalyzing,
+    setAnalysisResults
+  } = useVideoRecording()
 
   // Handle camera permission check
   const requestPermission = async () => {
@@ -51,6 +52,34 @@ const {
       videoRef.current.srcObject = videoStream
     }
   }, [videoStream])
+
+  // Log analysis results when received
+  useEffect(() => {
+    if (analysisResults) {
+      console.log('🎉 ANALYSIS RESULTS RECEIVED!')
+      console.log('═══════════════════════════════════')
+      console.log('📹 Video Info:', analysisResults.video_info)
+      console.log('🔍 Analysis:', analysisResults.analysis)
+      console.log('⚠️ Risk Assessment:', analysisResults.risk_assessment)
+      console.log('═══════════════════════════════════')
+      
+      if (analysisResults.analysis.detection_events.length > 0) {
+        console.log('🚨 DETECTION EVENTS:')
+        analysisResults.analysis.detection_events.forEach((event, i) => {
+          console.log(`   ${i + 1}. ${event.message} at ${event.timestamp.toFixed(1)}s`)
+        })
+      } else {
+        console.log('✅ No lazy eye events detected')
+      }
+    }
+  }, [analysisResults])
+
+  // Log analysis status
+  useEffect(() => {
+    if (isAnalyzing) {
+      console.log('🔄 Analysis in progress...')
+    }
+  }, [isAnalyzing])
 
   // Countdown effect
   useEffect(() => {
@@ -99,8 +128,10 @@ const {
 
   // Complete assessment
   const completeAssessment = async () => {
+    console.log('🏁 Assessment completed, stopping recording...')
     const filename = await stopRecording()
     setSavedFilename(filename)
+    console.log('💾 Video saved:', filename)
     setPhase('complete')
   }
 
@@ -397,10 +428,29 @@ const {
           <CheckCircle className="w-12 h-12 text-white" />
         </div>
         
-        <h1 className="text-3xl font-bold text-green-800 mb-4">All Clear!</h1>
-        <p className="text-gray-700 mb-4 text-center">
-          No significant risk factors were detected.
-        </p>
+        <h1 className="text-3xl font-bold text-green-800 mb-4">Assessment Complete!</h1>
+        
+        {/* Analysis Status */}
+        <div className="mb-6 text-center">
+          {isAnalyzing ? (
+            <div className="bg-blue-100 rounded-lg p-4 mb-4">
+              <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-blue-800 font-medium">🔍 Analyzing video with AI...</p>
+              <p className="text-blue-600 text-sm">Check console for detailed results</p>
+            </div>
+          ) : analysisResults ? (
+            <div className="bg-green-100 rounded-lg p-4 mb-4">
+              <p className="text-green-800 font-medium">✅ Analysis completed!</p>
+              <p className="text-green-700">Risk Level: {analysisResults.risk_assessment.level}</p>
+              <p className="text-green-600 text-sm">Check console for detailed results</p>
+            </div>
+          ) : (
+            <div className="bg-yellow-100 rounded-lg p-4 mb-4">
+              <p className="text-yellow-800 font-medium">⏳ Processing...</p>
+              <p className="text-yellow-600 text-sm">Analysis will start automatically</p>
+            </div>
+          )}
+        </div>
         
         {savedFilename && (
           <div className="bg-white rounded-lg p-4 mb-6 border border-green-200">
@@ -426,6 +476,7 @@ const {
               setEyeDirection('center')
               setSavedFilename(null)
               setConsentChecked(false)
+              setAnalysisResults(null)
             }}
             className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
           >
@@ -439,12 +490,12 @@ const {
             Done
           </button>
         </div>
+        
         <AnalysisResults
-  analysis={analysisResults}
-  isAnalyzing={isAnalyzing}
-  onClose={() => setAnalysisResults(null)}
-/>
-
+          analysis={analysisResults}
+          isAnalyzing={isAnalyzing}
+          onClose={() => setAnalysisResults(null)}
+        />
       </div>
     )
   }
