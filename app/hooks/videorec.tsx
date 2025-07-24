@@ -215,24 +215,20 @@ export const useVideoRecording = (): VideoRecordingHook => {
   // Send video to Render API for analysis
   const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
     try {
-      setIsAnalyzing(true)
-      const apiUrl = getApiUrl()
+    setIsAnalyzing(true)
+    const apiUrl = getApiUrl()
+    
+    console.log('🔍 Starting analysis...')
+    
+    // Create form data
+    const formData = new FormData()
+    formData.append('video', videoBlob, filename)
+
+     // API call with timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 3 * 60 * 1000) // 2 min timeout
       
-      console.log('🔍 Starting analysis...')
-      console.log(`📤 API: ${apiUrl}/upload`)
-      console.log(`📤 File: ${filename} (${(videoBlob.size / 1024 / 1024).toFixed(2)} MB)`)
-      
-      // Create form data
-      const formData = new FormData()
-      formData.append('video', videoBlob, filename)
-      
-      // Call Render API with timeout
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => {
-        controller.abort()
-        console.log('⏰ API call timed out')
-      }, 120000) // 2 minute timeout
-      
+     
       const response = await fetch(`${apiUrl}/upload`, {
         method: 'POST',
         body: formData,
@@ -245,21 +241,20 @@ export const useVideoRecording = (): VideoRecordingHook => {
       clearTimeout(timeoutId)
       console.log(`📡 Response: ${response.status} ${response.statusText}`)
       
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`API Error ${response.status}: ${errorText}`)
-      }
+      // if (response.status != 200) {
+      //   const errorText = await response.text()
+      //   throw new Error(`API Error ${response.status}: ${errorText}`)
+      // }
       
       const result = await response.json()
-      
-      if (result.success && result.analysis) {
-        console.log('✅ Analysis completed!')
-        console.log(`⏱️ Processing time: ${result.processing_time_seconds?.toFixed(1)}s`)
-        console.log('📊 Results:', result.analysis)
-        setAnalysisResults(result.analysis)
-      } else {
-        throw new Error(result.error || 'Analysis failed')
-      }
+          if (!result.success) {
+      throw new Error(result.message || 'Analysis failed')
+    }
+          console.log('✅ Analysis complete:', result)
+    setAnalysisResults(result.analysis)
+    setIsAnalyzing(false)
+    
+    return result.video_url || null
       
     } catch (error: any) {
       console.error('❌ Analysis failed:', error)

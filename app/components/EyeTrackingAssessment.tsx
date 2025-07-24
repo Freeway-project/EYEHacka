@@ -20,7 +20,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const [consentChecked, setConsentChecked] = useState(false)
   const [eyeDirection, setEyeDirection] = useState<'center' | 'left' | 'right' | 'up' | 'down'>('center')
   const videoRef = useRef<HTMLVideoElement>(null)
-  
+  const [showDetailedResults, setShowDetailedResults] = useState(false);
   const {
     isRecording,
     hasPermission,
@@ -431,26 +431,31 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
         <h1 className="text-3xl font-bold text-green-800 mb-4">Assessment Complete!</h1>
         
         {/* Analysis Status */}
-        <div className="mb-6 text-center">
-          {isAnalyzing ? (
-            <div className="bg-blue-100 rounded-lg p-4 mb-4">
-              <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-blue-800 font-medium">🔍 Analyzing video with AI...</p>
-              <p className="text-blue-600 text-sm">Check console for detailed results</p>
-            </div>
-          ) : analysisResults ? (
-            <div className="bg-green-100 rounded-lg p-4 mb-4">
-              <p className="text-green-800 font-medium">✅ Analysis completed!</p>
-              <p className="text-green-700">Risk Level: {analysisResults.risk_assessment.level}</p>
-              <p className="text-green-600 text-sm">Check console for detailed results</p>
-            </div>
-          ) : (
-            <div className="bg-yellow-100 rounded-lg p-4 mb-4">
-              <p className="text-yellow-800 font-medium">⏳ Processing...</p>
-              <p className="text-yellow-600 text-sm">Analysis will start automatically</p>
-            </div>
-          )}
-        </div>
+  <div className="mb-6 text-center">
+  {isAnalyzing ? (
+    <div className="bg-blue-100 rounded-lg p-4 mb-4">
+      <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+      <p className="text-blue-800 font-medium">🔍 Analyzing video with AI...</p>
+      <p className="text-blue-600 text-sm">Check console for detailed results</p>
+    </div>
+  ) : analysisResults ? (
+    <div className="bg-green-100 rounded-lg p-4 mb-4">
+      <p className="text-green-800 font-medium">✅ Analysis completed!</p>
+      <p className="text-green-700">Risk Level: {analysisResults.risk_assessment.level}</p>
+      <button 
+        onClick={() => setShowDetailedResults(true)} 
+        className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium"
+      >
+        View Detailed Results
+      </button>
+    </div>
+  ) : (
+    <div className="bg-yellow-100 rounded-lg p-4 mb-4">
+      <p className="text-yellow-800 font-medium">⏳ Processing...</p>
+      <p className="text-yellow-600 text-sm">Analysis will start automatically</p>
+    </div>
+  )}
+</div>
         
         {savedFilename && (
           <div className="bg-white rounded-lg p-4 mb-6 border border-green-200">
@@ -491,11 +496,13 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
           </button>
         </div>
         
-        <AnalysisResults
-          analysis={analysisResults}
-          isAnalyzing={isAnalyzing}
-          onClose={() => setAnalysisResults(null)}
-        />
+   {analysisResults && showDetailedResults && (
+  <AnalysisResults
+    analysis={analysisResults}
+    isAnalyzing={false}
+    onClose={() => setShowDetailedResults(false)}
+  />
+)}
       </div>
     )
   }
