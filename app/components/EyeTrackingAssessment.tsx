@@ -1,15 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Camera, AlertCircle, CheckCircle } from 'lucide-react'
 import { useVideoRecording } from '@/hooks/videorec'
-
+import AnalysisResults from './EyeTrackingAnalysis'
 
 interface EyeTrackingAssessmentProps {
   onBack: () => void
 }
 
-type AssessmentPhase = 'intro' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'complete'
+type AssessmentPhase = 'intro' | 'consent' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'complete'
 
 export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentProps) {
   const [phase, setPhase] = useState<AssessmentPhase>('intro')
@@ -17,15 +17,21 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const [toyPosition, setToyPosition] = useState(0)
   const [assessmentTime, setAssessmentTime] = useState(0)
   const [savedFilename, setSavedFilename] = useState<string | null>(null)
+  const [consentChecked, setConsentChecked] = useState(false)
+  const [eyeDirection, setEyeDirection] = useState<'center' | 'left' | 'right' | 'up' | 'down'>('center')
+  const videoRef = useRef<HTMLVideoElement>(null)
   
-  const {
-    isRecording,
-    hasPermission,
-    permissionError,
-    startRecording,
-    stopRecording,
-    videoPreview
-  } = useVideoRecording()
+const {
+  isRecording,
+  hasPermission,
+  permissionError,
+  startRecording,
+  stopRecording,
+  videoPreview,
+  videoStream,
+  analysisResults,    // NEW
+  isAnalyzing        // NEW
+} = useVideoRecording()
 
   // Handle camera permission check
   const requestPermission = async () => {
@@ -38,6 +44,13 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
       setTimeout(() => setPhase('countdown'), 500)
     }
   }
+
+  // Set up video stream for display
+  useEffect(() => {
+    if (videoStream && videoRef.current) {
+      videoRef.current.srcObject = videoStream
+    }
+  }, [videoStream])
 
   // Countdown effect
   useEffect(() => {
@@ -54,24 +67,24 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const startAssessment = async () => {
     await startRecording()
     
-    const duration = 10000 // 10 seconds
+    const duration = 30000 // 30 seconds
     const startTime = Date.now()
+    
+    // Eye movement sequence: center -> left -> right -> up -> down -> center (repeat)
+    const eyeSequence = ['center', 'left', 'right', 'up', 'down'] as const
+    let sequenceIndex = 0
     
     const animate = () => {
       const elapsed = Date.now() - startTime
       const progress = Math.min(elapsed / duration, 1)
       
-      // Create smooth left-to-right and right-to-left movement
-      // Using sine wave to create smooth back and forth motion
-      // Two complete cycles in 10 seconds (left->right->left->right)
-      const cycles = 2
-      const sineValue = Math.sin(progress * Math.PI * cycles)
+      // Change eye direction every 5 seconds
+      const currentSequenceIndex = Math.floor((elapsed / 5000)) % eyeSequence.length
+      if (currentSequenceIndex !== sequenceIndex) {
+        sequenceIndex = currentSequenceIndex
+        setEyeDirection(eyeSequence[sequenceIndex])
+      }
       
-      // Convert sine wave (-1 to 1) to position (5% to 85% of screen width)
-      // This ensures toy stays visible and moves from edge to edge
-      const position = ((sineValue + 1) / 2) * 80 + 5
-      
-      setToyPosition(position)
       setAssessmentTime(Math.floor(elapsed / 1000))
       
       if (progress < 1) {
@@ -119,7 +132,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
 
         <div className="flex space-x-4 mb-6">
           <button 
-            onClick={() => setPhase('positioning')}
+            onClick={() => setPhase('consent')}
             className="flex-1 bg-blue-200 text-blue-800 py-3 px-6 rounded-full font-medium"
           >
             Start
@@ -144,6 +157,61 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
               <p className="text-sm font-medium">The Flash Test</p>
             </div>
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'consent') {
+    return (
+      <div className="p-4 min-h-screen bg-white">
+        <header className="flex items-center mb-6">
+          <button onClick={() => setPhase('intro')} className="mr-4">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-semibold">Parental Consent</h1>
+        </header>
+
+        <div className="bg-blue-50 rounded-3xl p-6 mb-8">
+          <h2 className="text-lg font-semibold mb-4 text-blue-800">Important Notice</h2>
+          <p className="text-gray-700 mb-4">
+            I am the parent/guardian and consent to my child's vision screening using this app. 
+            Data will be used only for screening, kept confidential, and anonymised.
+          </p>
+          
+          <div className="flex items-start space-x-3 mt-6">
+            <input 
+              type="checkbox" 
+              id="consent" 
+              checked={consentChecked}
+              onChange={(e) => setConsentChecked(e.target.checked)}
+              className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded"
+            />
+            <label htmlFor="consent" className="text-gray-700 font-medium">
+              I agree to the terms above
+            </label>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <button 
+            onClick={() => setPhase('positioning')}
+            disabled={!consentChecked}
+            className={`w-full py-3 px-6 rounded-full font-medium ${
+              consentChecked 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            Continue to Assessment
+          </button>
+          
+          <button 
+            onClick={() => setPhase('intro')}
+            className="w-full bg-gray-200 text-gray-800 py-3 px-6 rounded-full font-medium"
+          >
+            Back
+          </button>
         </div>
       </div>
     )
@@ -193,7 +261,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     return (
       <div className="p-4 min-h-screen bg-white">
         <header className="flex items-center mb-6">
-          <button onClick={() => setPhase('intro')} className="mr-4">
+          <button onClick={() => setPhase('consent')} className="mr-4">
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-semibold">Distance to Face</h1>
@@ -237,39 +305,85 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   }
 
   if (phase === 'assessment') {
+    const getDirectionInstruction = () => {
+      switch (eyeDirection) {
+        case 'left': return 'Look LEFT ←'
+        case 'right': return 'Look RIGHT →'
+        case 'up': return 'Look UP ↑'
+        case 'down': return 'Look DOWN ↓'
+        default: return 'Look STRAIGHT ahead'
+      }
+    }
+
+    const getEyePosition = () => {
+      switch (eyeDirection) {
+        case 'left': return 'translate-x-[-8px]'
+        case 'right': return 'translate-x-[8px]'
+        case 'up': return 'translate-y-[-8px]'
+        case 'down': return 'translate-y-[8px]'
+        default: return 'translate-x-0 translate-y-0'
+      }
+    }
+
     return (
-      <div className="min-h-screen bg-black relative overflow-hidden">
-        {/* Moving toy */}
-        <div 
-          className="absolute top-1/2 transform -translate-y-1/2 -translate-x-1/2 z-10"
-          style={{ 
-            left: `${toyPosition}%`,
-            transition: 'none' // Remove CSS transition for smoother animation
-          }}
-        >
-          <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center text-3xl shadow-lg">
-            🚂
+      <div className="min-h-screen bg-white flex flex-col">
+        {/* Camera Feed */}
+        <div className="flex-1 relative">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          
+          {/* Overlay Instructions */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            {/* Face Animation */}
+            <div className="mb-8">
+              <div className="w-32 h-32 bg-yellow-200 rounded-full flex items-center justify-center relative border-4 border-yellow-400">
+                {/* Eyes */}
+                <div className="flex space-x-6">
+                  <div className={`w-6 h-6 bg-black rounded-full transition-transform duration-1000 ${getEyePosition()}`}></div>
+                  <div className={`w-6 h-6 bg-black rounded-full transition-transform duration-1000 ${getEyePosition()}`}></div>
+                </div>
+                {/* Mouth */}
+                <div className="absolute bottom-6 w-4 h-2 bg-black rounded-full"></div>
+              </div>
+            </div>
+
+            {/* Direction Instruction */}
+            <div className="bg-black bg-opacity-70 px-6 py-3 rounded-full mb-4">
+              <span className="text-white text-xl font-bold">{getDirectionInstruction()}</span>
+            </div>
+
+            {/* Keep Head Still Reminder */}
+            <div className="bg-red-500 px-4 py-2 rounded-full mb-8">
+              <span className="text-white font-semibold">Keep head STILL - Move eyes ONLY</span>
+            </div>
           </div>
         </div>
 
-        {/* Recording indicator */}
-        {isRecording && (
-          <div className="absolute top-4 right-4 flex items-center space-x-2 text-white">
-            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-            <span className="text-sm">Recording {assessmentTime}s</span>
-          </div>
-        )}
+        {/* Bottom Controls */}
+        <div className="p-4 bg-gray-100">
+          {/* Recording indicator */}
+          {isRecording && (
+            <div className="flex items-center justify-center space-x-2 text-red-600 mb-4">
+              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="font-semibold">Recording {assessmentTime}s</span>
+            </div>
+          )}
 
-        {/* Progress bar */}
-        <div className="absolute bottom-4 left-4 right-4">
-          <div className="bg-gray-700 rounded-full h-2">
+          {/* Progress bar */}
+          <div className="bg-gray-300 rounded-full h-3 mb-4">
             <div 
-              className="bg-white rounded-full h-2 transition-all duration-1000"
-              style={{ width: `${(assessmentTime / 10) * 100}%` }}
+              className="bg-blue-500 rounded-full h-3 transition-all duration-1000"
+              style={{ width: `${(assessmentTime / 30) * 100}%` }}
             ></div>
           </div>
-          <div className="text-white text-center text-sm mt-2">
-            {10 - assessmentTime} seconds remaining
+          
+          <div className="text-center text-gray-700 font-medium">
+            {30 - assessmentTime} seconds remaining
           </div>
         </div>
       </div>
@@ -309,7 +423,9 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
               setCountdown(3)
               setToyPosition(0)
               setAssessmentTime(0)
+              setEyeDirection('center')
               setSavedFilename(null)
+              setConsentChecked(false)
             }}
             className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
           >
@@ -323,6 +439,12 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
             Done
           </button>
         </div>
+        <AnalysisResults
+  analysis={analysisResults}
+  isAnalyzing={isAnalyzing}
+  onClose={() => setAnalysisResults(null)}
+/>
+
       </div>
     )
   }

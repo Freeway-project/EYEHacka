@@ -7,6 +7,7 @@ interface VideoRecordingHook {
   startRecording: () => Promise<void>
   stopRecording: () => Promise<string | null>
   videoPreview: string | null
+  videoStream: MediaStream | null
 }
 
 export const useVideoRecording = (): VideoRecordingHook => {
@@ -14,6 +15,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
   const [hasPermission, setHasPermission] = useState(false)
   const [permissionError, setPermissionError] = useState<string | null>(null)
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -35,6 +37,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
       
       setHasPermission(true)
       streamRef.current = stream
+      setVideoStream(stream)
       recordedChunksRef.current = []
       
       // Create MediaRecorder
@@ -110,6 +113,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
           }
           
           setIsRecording(false)
+          setVideoStream(null)
           resolve(filename)
           
         } catch (error) {
@@ -128,6 +132,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
     permissionError,
     startRecording,
     stopRecording,
-    videoPreview
+    videoPreview,
+    videoStream
   }
 }
