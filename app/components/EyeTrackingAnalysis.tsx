@@ -34,24 +34,28 @@ interface EyeTrackingAnalysisProps {
 }
 
 export default function EyeTrackingAnalysis({ analysis, isAnalyzing, onClose }: EyeTrackingAnalysisProps) {
-  if (!isAnalyzing && !analysis) return null
+  // Don't show modal if no analysis and not analyzing
+  if (!isAnalyzing && !analysis) {
+    return null
+  }
+
+  // Show loading state
   if (isAnalyzing) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
           <div className="text-center">
             <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <h3 className="text-xl font-semibold mb-2 text-gray-800">Uploading & Analyzing...</h3>
-            <p className="text-gray-600">Please wait while we process and analyze the video.</p>
+            <h3 className="text-xl font-semibold mb-2 text-gray-800">Analyzing Video...</h3>
+            <p className="text-gray-600">Our AI is processing eye movements and detecting potential issues</p>
             <div className="mt-4 text-sm text-gray-500">
-              This may take up to 20 seconds including upload
+              This may take 10-30 seconds depending on video length
             </div>
           </div>
         </div>
       </div>
     )
   }
-
 
   // Show results
   if (!analysis) return null
