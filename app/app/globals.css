@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Force all text to be black */
+* {
+  color: #000000 !important;
+}
+
+/* Ensure form inputs also have black text */
+input, textarea, select, button {
+  color: #000000 !important;
+}
+
+/* Make sure placeholder text is also black but with opacity */
+input::placeholder, textarea::placeholder {
+  color: #000000 !important;
+  opacity: 0.6;
+}

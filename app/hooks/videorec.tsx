@@ -213,22 +213,41 @@ export const useVideoRecording = (): VideoRecordingHook => {
   }, [isRecording])
 
   // Send video to Render API for analysis
-  const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
+const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
     try {
-    setIsAnalyzing(true)
-    const apiUrl = getApiUrl()
-    
-    console.log('🔍 Starting analysis...')
-    
-    // Create form data
-    const formData = new FormData()
-    formData.append('video', videoBlob, filename)
-
-     // API call with timeout
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 3 * 60 * 1000) // 2 min timeout
+      setIsAnalyzing(true)
+      const apiUrl = getApiUrl()
       
-     
+      console.log('🔍 Starting analysis... This may take several minutes...')
+      
+      // Create form data
+      const formData = new FormData()
+      formData.append('video', videoBlob, filename)
+
+      // API call with extended timeout for video processing
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000) // 10 minutes timeout
+      
+      // Show progress indicator
+      let progressInterval: NodeJS.Timeout | null = null
+      let secondsElapsed = 0
+      
+      progressInterval = setInterval(() => {
+        secondsElapsed += 5
+        console.log(`⏳ Analysis in progress... ${Math.floor(secondsElapsed / 60)}m ${secondsElapsed % 60}s elapsed`)
+        
+        // Show user-friendly progress messages
+        if (secondsElapsed === 30) {
+          console.log('🧠 AI is analyzing your eye movements...')
+        } else if (secondsElapsed === 60) {
+          console.log('👁️ Processing facial landmarks and gaze patterns...')
+        } else if (secondsElapsed === 120) {
+          console.log('📊 Generating assessment report...')
+        } else if (secondsElapsed >= 180) {
+          console.log('🔄 Complex analysis taking longer than expected...')
+        }
+      }, 5000)
+      
       const response = await fetch(`${apiUrl}/upload`, {
         method: 'POST',
         body: formData,
@@ -238,34 +257,38 @@ export const useVideoRecording = (): VideoRecordingHook => {
         }
       })
       
+      // Clear progress tracking
       clearTimeout(timeoutId)
-      console.log(`📡 Response: ${response.status} ${response.statusText}`)
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
       
-      // if (response.status != 200) {
-      //   const errorText = await response.text()
-      //   throw new Error(`API Error ${response.status}: ${errorText}`)
-      // }
+      console.log(`📡 Response: ${response.status} ${response.statusText}`)
+      console.log(`✅ Analysis completed in ${Math.floor(secondsElapsed / 60)}m ${secondsElapsed % 60}s`)
       
       const result = await response.json()
-          if (!result.success) {
-      throw new Error(result.message || 'Analysis failed')
-    }
-          console.log('✅ Analysis complete:', result)
-    setAnalysisResults(result.analysis)
-    setIsAnalyzing(false)
-    
-    return result.video_url || null
+      if (!result.success) {
+        throw new Error(result.message || 'Analysis failed')
+      }
+      
+      console.log('🎉 Analysis complete:', result)
+      setAnalysisResults(result.analysis)
+      
+      return result.video_url || null
       
     } catch (error: any) {
       console.error('❌ Analysis failed:', error)
       
       if (error.name === 'AbortError') {
-        console.error('⏰ Analysis timed out')
+        console.error('⏰ Analysis timed out after 10 minutes')
+        // You might want to show a user-friendly timeout message
+      } else if (error.message?.includes('fetch')) {
+        console.error('🌐 Network error - check your internet connection')
       } else {
-        console.error('💡 Check Render API deployment')
+        console.error('💡 Check Render API deployment and server logs')
       }
       
-      // Fallback demo results
+      // Enhanced fallback results with timeout info
       const fallbackResults: AnalysisData = {
         video_info: {
           duration: 30.0,
@@ -281,12 +304,14 @@ export const useVideoRecording = (): VideoRecordingHook => {
         },
         risk_assessment: {
           level: 'LOW',
-          confidence: 'High',
-          recommendation: 'No issues detected (fallback - API unavailable)'
+          confidence: 'Demo Mode',
+          recommendation: error.name === 'AbortError' 
+            ? 'Analysis timed out - please try with a shorter video or check your connection'
+            : 'API temporarily unavailable - showing demo results'
         }
       }
       
-      console.log('📋 Showing fallback results:', fallbackResults)
+      console.log('📋 Showing fallback results due to:', error.message)
       setAnalysisResults(fallbackResults)
       
     } finally {

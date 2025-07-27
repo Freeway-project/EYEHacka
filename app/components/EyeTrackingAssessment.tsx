@@ -96,7 +96,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const startAssessment = async () => {
     await startRecording()
     
-    const duration = 30000 // 30 seconds
+    const duration = 20000 // 20 seconds
     const startTime = Date.now()
     
     // Eye movement sequence: center -> left -> right -> up -> down -> center (repeat)
@@ -107,8 +107,8 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
       const elapsed = Date.now() - startTime
       const progress = Math.min(elapsed / duration, 1)
       
-      // Change eye direction every 5 seconds
-      const currentSequenceIndex = Math.floor((elapsed / 5000)) % eyeSequence.length
+      // Change eye direction every 4 seconds (20 seconds / 5 positions = 4 seconds each)
+      const currentSequenceIndex = Math.floor((elapsed / 4000)) % eyeSequence.length
       if (currentSequenceIndex !== sequenceIndex) {
         sequenceIndex = currentSequenceIndex
         setEyeDirection(eyeSequence[sequenceIndex])
