@@ -1,10 +1,9 @@
-// Updated EyeTrackingAssessment with face compression
+// Simple EyeTrackingAssessment - just record and send
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Camera, AlertCircle, CheckCircle } from 'lucide-react'
 import { useVideoRecording } from '@/hooks/videorec'
-import { useOptimizedEyeTracking } from '@/hooks/face-compression'
 import AnalysisResults from './EyeTrackingAnalysis'
 
 interface EyeTrackingAssessmentProps {
@@ -20,16 +19,11 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const [savedFilename, setSavedFilename] = useState<string | null>(null)
   const [consentChecked, setConsentChecked] = useState(false)
   const [eyeDirection, setEyeDirection] = useState<'center' | 'left' | 'right' | 'up' | 'down'>('center')
-  const [compressionStats, setCompressionStats] = useState<{
-    originalSize?: number
-    compressedSize?: number
-    compressionRatio?: number
-  }>({})
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const [showDetailedResults, setShowDetailedResults] = useState(false)
   
-  // Original video recording hook
+  // Simple video recording - no complex compression
   const {
     isRecording,
     hasPermission,
@@ -42,13 +36,6 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     isAnalyzing,
     setAnalysisResults
   } = useVideoRecording()
-
-  // New optimized face recording hook
-  const {
-    startOptimizedRecording,
-    stopOptimizedRecording,
-    canvasRef
-  } = useOptimizedEyeTracking()
 
   // Handle camera permission check
   const requestPermission = async () => {
@@ -71,15 +58,10 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   // Log analysis results
   useEffect(() => {
     if (analysisResults) {
-      console.log('🎉 ANALYSIS RESULTS RECEIVED!')
-      console.log('═══════════════════════════════════')
-      console.log('📹 Video Info:', analysisResults.video_info)
-      console.log('🔍 Analysis:', analysisResults.analysis)
-      console.log('⚠️ Risk Assessment:', analysisResults.risk_assessment)
-      console.log('📊 Compression Stats:', compressionStats)
-      console.log('═══════════════════════════════════')
+      console.log('🎉 Analysis complete!')
+      console.log('Risk Level:', analysisResults.risk_assessment.level)
     }
-  }, [analysisResults, compressionStats])
+  }, [analysisResults])
 
   // Countdown effect
   useEffect(() => {
@@ -92,16 +74,9 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     }
   }, [phase, countdown])
 
-  // Start assessment with optimized recording
+  // Start simple assessment
   const startAssessment = async () => {
-    // Start both regular recording (fallback) and optimized face recording
     await startRecording()
-    
-    // Try to start face-only recording
-    if (videoRef.current) {
-      const optimizedStarted = await startOptimizedRecording(videoRef.current)
-      console.log('Optimized face recording:', optimizedStarted ? 'Started' : 'Fallback to full video')
-    }
     
     const duration = 20000 // 20 seconds
     const startTime = Date.now()
@@ -132,56 +107,208 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     animate()
   }
 
-  // Complete assessment with compression
+  // Simple completion - just stop and send
   const completeAssessment = async () => {
-    console.log('🏁 Assessment completed, stopping recording...')
+    console.log('🏁 Assessment completed')
     
-    // Stop both recordings
-    const [regularFilename, optimizedResult] = await Promise.all([
-      stopRecording(),
-      stopOptimizedRecording()
-    ])
-
-    if (optimizedResult) {
-      // Calculate compression stats
-      const originalBlob = await fetch(regularFilename).then(r => r.blob()).catch(() => ({ size: 0 }))
-      const compressionRatio = originalBlob.size > 0 ? 
-        ((originalBlob.size - optimizedResult.size) / originalBlob.size * 100).toFixed(1) : 0
-
-      setCompressionStats({
-        originalSize: originalBlob.size,
-        compressedSize: optimizedResult.size,
-        compressionRatio: parseFloat(compressionRatio)
-      })
-
-      // Create download for optimized video
-      const optimizedUrl = URL.createObjectURL(
-        optimizedResult.type === 'face-video' ? optimizedResult.data : 
-        new Blob(optimizedResult.data.map(f => f.blob), { type: 'application/json' })
-      )
-      
-      const optimizedFilename = `eye_tracking_optimized_${Date.now()}.${
-        optimizedResult.type === 'face-video' ? 'webm' : 'json'
-      }`
-      
-      // Download optimized version
-      const a = document.createElement('a')
-      a.href = optimizedUrl
-      a.download = optimizedFilename
-      a.click()
-      
-      setSavedFilename(optimizedFilename)
-      console.log('💾 Optimized video saved:', optimizedFilename)
-      console.log(`📊 Compression: ${compressionRatio}% size reduction`)
-    } else {
-      setSavedFilename(regularFilename)
-      console.log('💾 Regular video saved:', regularFilename)
+    const filename = await stopRecording()
+    setSavedFilename(filename)
+    
+    if (filename) {
+      console.log('💾 Video saved:', filename)
     }
     
     setPhase('complete')
   }
 
-  // ... (keep all the existing phase rendering logic until 'complete' phase)
+  // Show phases (intro, consent, positioning, etc.)
+  if (phase === 'intro') {
+    return (
+      <div className="p-4 min-h-screen bg-blue-50 flex flex-col">
+        <button onClick={onBack} className="self-start mb-4">
+          <ArrowLeft className="w-6 h-6" />
+        </button>
+        
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mb-6">
+            <Camera className="w-10 h-10 text-white" />
+          </div>
+          
+          <h1 className="text-2xl font-bold mb-4">Eye Tracking Assessment</h1>
+          <p className="text-gray-600 mb-8 max-w-md">
+            This test will record a 20-second video to analyze eye movements for potential lazy eye detection.
+          </p>
+          
+          <button 
+            onClick={() => setPhase('consent')}
+            className="bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
+          >
+            Start Assessment
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'consent') {
+    return (
+      <div className="p-4 min-h-screen bg-blue-50 flex flex-col">
+        <button onClick={() => setPhase('intro')} className="self-start mb-4">
+          <ArrowLeft className="w-6 h-6" />
+        </button>
+        
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <h1 className="text-2xl font-bold mb-6">Privacy & Consent</h1>
+          
+          <div className="bg-white rounded-lg p-6 mb-6 max-w-md">
+            <h3 className="font-semibold mb-3">What we'll do:</h3>
+            <ul className="space-y-2 text-sm text-gray-600">
+              <li>• Record 20 seconds of video</li>
+              <li>• Analyze eye movements with AI</li>
+              <li>• Provide screening results</li>
+              <li>• Save video locally on your device</li>
+            </ul>
+          </div>
+          
+          <label className="flex items-center space-x-3 mb-6">
+            <input 
+              type="checkbox" 
+              checked={consentChecked}
+              onChange={(e) => setConsentChecked(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="text-sm">I consent to video recording for eye tracking analysis</span>
+          </label>
+          
+          <button 
+            onClick={() => setPhase('positioning')}
+            disabled={!consentChecked}
+            className="bg-blue-500 text-white py-3 px-8 rounded-full font-medium disabled:bg-gray-300"
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'positioning') {
+    return (
+      <div className="p-4 min-h-screen bg-blue-50 flex flex-col">
+        <button onClick={() => setPhase('consent')} className="self-start mb-4">
+          <ArrowLeft className="w-6 h-6" />
+        </button>
+        
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <h1 className="text-2xl font-bold mb-6">Position Yourself</h1>
+          
+          <div className="bg-white rounded-lg p-6 mb-6 max-w-md text-center">
+            <h3 className="font-semibold mb-4">For best results:</h3>
+            <ul className="space-y-3 text-sm text-gray-600">
+              <li>📱 Hold device 40cm from your face</li>
+              <li>💡 Ensure good lighting</li>
+              <li>👤 Keep your face centered</li>
+              <li>👀 Look directly at the screen</li>
+            </ul>
+          </div>
+          
+          <button 
+            onClick={requestPermission}
+            className="bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
+          >
+            Enable Camera
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'permission') {
+    return (
+      <div className="p-4 min-h-screen bg-blue-50 flex flex-col items-center justify-center">
+        {permissionError ? (
+          <div className="text-center">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-4">Camera Access Needed</h2>
+            <p className="text-gray-600 mb-6">{permissionError}</p>
+            <button 
+              onClick={requestPermission}
+              className="bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h2 className="text-xl font-bold">Accessing Camera...</h2>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (phase === 'countdown') {
+    return (
+      <div className="p-4 min-h-screen bg-green-50 flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <video 
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-64 h-48 bg-black rounded-lg mb-8 object-cover"
+          />
+          
+          <div className="text-6xl font-bold text-green-600 mb-4">
+            {countdown}
+          </div>
+          
+          <p className="text-gray-600">Get ready! Assessment starts in...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'assessment') {
+    return (
+      <div className="p-4 min-h-screen bg-red-50 flex flex-col">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <video 
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-64 h-48 bg-black rounded-lg mb-8 object-cover"
+          />
+          
+          <div className="text-center mb-6">
+            <div className="text-4xl font-bold text-red-600 mb-2">
+              {20 - assessmentTime}
+            </div>
+            <p className="text-gray-600">Follow the dot with your eyes</p>
+          </div>
+          
+          {/* Simple eye direction indicator */}
+          <div className="relative w-32 h-32 border-2 border-gray-300 rounded-lg mb-4">
+            <div 
+              className={`absolute w-4 h-4 bg-red-500 rounded-full transition-all duration-1000 ${
+                eyeDirection === 'center' ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' :
+                eyeDirection === 'left' ? 'top-1/2 left-2 -translate-y-1/2' :
+                eyeDirection === 'right' ? 'top-1/2 right-2 -translate-y-1/2' :
+                eyeDirection === 'up' ? 'top-2 left-1/2 -translate-x-1/2' :
+                'bottom-2 left-1/2 -translate-x-1/2'
+              }`}
+            />
+          </div>
+          
+          <div className="bg-red-100 rounded-lg p-3">
+            <p className="text-red-800 text-sm">Recording in progress...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (phase === 'complete') {
     return (
@@ -192,27 +319,12 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
         
         <h1 className="text-3xl font-bold text-green-800 mb-4">Assessment Complete!</h1>
         
-        {/* Compression Stats */}
-        {compressionStats.compressionRatio && (
-          <div className="bg-blue-50 rounded-lg p-4 mb-4 border border-blue-200">
-            <h3 className="font-semibold text-blue-800 mb-2">📊 Optimization Results</h3>
-            <div className="text-sm space-y-1">
-              <p>Original size: {(compressionStats.originalSize / 1024 / 1024).toFixed(1)} MB</p>
-              <p>Optimized size: {(compressionStats.compressedSize / 1024 / 1024).toFixed(1)} MB</p>
-              <p className="font-medium text-green-600">
-                Size reduction: {compressionStats.compressionRatio}%
-              </p>
-            </div>
-          </div>
-        )}
-        
         {/* Analysis Status */}
         <div className="mb-6 text-center">
           {isAnalyzing ? (
             <div className="bg-blue-100 rounded-lg p-4 mb-4">
               <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-blue-800 font-medium">🔍 Analyzing face-only video with AI...</p>
-              <p className="text-blue-600 text-sm">Processing optimized data for faster analysis</p>
+              <p className="text-blue-800 font-medium">🔍 Analyzing video with AI...</p>
             </div>
           ) : analysisResults ? (
             <div className="bg-green-100 rounded-lg p-4 mb-4">
@@ -222,13 +334,12 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
                 onClick={() => setShowDetailedResults(true)} 
                 className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium"
               >
-                View Detailed Results
+                View Results
               </button>
             </div>
           ) : (
             <div className="bg-yellow-100 rounded-lg p-4 mb-4">
-              <p className="text-yellow-800 font-medium">⏳ Processing optimized video...</p>
-              <p className="text-yellow-600 text-sm">Analysis will start automatically</p>
+              <p className="text-yellow-800 font-medium">⏳ Processing video...</p>
             </div>
           )}
         </div>
@@ -237,22 +348,15 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
           <div className="bg-white rounded-lg p-4 mb-6 border border-green-200">
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Optimized assessment video downloaded:</span>
+              <span>Video saved:</span>
             </div>
             <p className="text-xs text-gray-500 mt-1 font-mono">{savedFilename}</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Check your device Downloads folder
-            </p>
           </div>
         )}
-        
-        {/* Hidden canvas for face detection */}
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
         
         <div className="space-y-3 w-full max-w-sm">
           <button 
             onClick={() => {
-              // Reset all states
               setPhase('intro')
               setCountdown(3)
               setAssessmentTime(0)
@@ -260,7 +364,6 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
               setSavedFilename(null)
               setConsentChecked(false)
               setAnalysisResults(null)
-              setCompressionStats({})
             }}
             className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
           >
