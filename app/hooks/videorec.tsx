@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 
 interface AnalysisData {
   video_info: {
@@ -36,6 +36,7 @@ interface VideoRecordingHook {
   analysisResults: AnalysisData | null
   isAnalyzing: boolean
   setAnalysisResults: (results: AnalysisData | null) => void
+  cleanupStreams: () => void
 }
 
 export const useVideoRecording = (): VideoRecordingHook => {
@@ -61,10 +62,59 @@ export const useVideoRecording = (): VideoRecordingHook => {
     return 'https://eyehacka.onrender.com'
   }
 
+  // Clean up streams properly
+  const cleanupStreams = useCallback(() => {
+    console.log('🧹 Cleaning up camera streams...')
+    
+    // Stop the current stream if it exists
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        if (track.readyState === 'live') {
+          track.stop()
+          console.log(`📷 Stopped ${track.kind} track`)
+        }
+      })
+      streamRef.current = null
+    }
+    
+    // Also clean up the state stream
+    if (videoStream) {
+      videoStream.getTracks().forEach(track => {
+        if (track.readyState === 'live') {
+          track.stop()
+          console.log(`📷 Stopped state ${track.kind} track`)
+        }
+      })
+    }
+    
+    // Clean up MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    mediaRecorderRef.current = null
+    
+    // Reset states
+    setVideoStream(null)
+    setIsRecording(false)
+    setHasPermission(false)
+    
+    console.log('✅ Stream cleanup completed')
+  }, [videoStream])
+
+  // Clean up on component unmount
+  useEffect(() => {
+    return () => {
+      cleanupStreams()
+    }
+  }, [cleanupStreams])
+
   const startRecording = useCallback(async () => {
     try {
       setPermissionError(null)
       console.log('🎬 Starting video recording...')
+      
+      // Clean up any existing streams first
+      cleanupStreams()
       
       // Check MediaRecorder support
       if (!window.MediaRecorder) {
@@ -120,6 +170,10 @@ export const useVideoRecording = (): VideoRecordingHook => {
         console.log('🔴 Recording started')
       }
       
+      mediaRecorder.onstop = () => {
+        console.log('⏹️ Recording stopped')
+      }
+      
       // Start recording with 1-second chunks
       mediaRecorder.start(1000)
       setIsRecording(true)
@@ -136,8 +190,9 @@ export const useVideoRecording = (): VideoRecordingHook => {
       }
       
       setHasPermission(false)
+      cleanupStreams()
     }
-  }, [])
+  }, [cleanupStreams])
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -145,6 +200,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
       
       if (!mediaRecorderRef.current || !isRecording) {
         console.log('❌ No recording to stop')
+        cleanupStreams()
         resolve(null)
         return
       }
@@ -155,6 +211,7 @@ export const useVideoRecording = (): VideoRecordingHook => {
           
           if (recordedChunksRef.current.length === 0) {
             console.log('❌ No video data recorded')
+            cleanupStreams()
             resolve(null)
             return
           }
@@ -177,26 +234,20 @@ export const useVideoRecording = (): VideoRecordingHook => {
           // Send to Render API for analysis
           await analyzeVideoWithAPI(videoBlob, filename)
           
-          // Cleanup
+          // Cleanup video URL after a short delay
           setTimeout(() => {
             URL.revokeObjectURL(videoUrl)
             console.log('🗑️ Video URL cleaned up')
           }, 5000)
           
-          // Stop camera
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => {
-              track.stop()
-              console.log('📷 Camera stopped')
-            })
-          }
+          // IMPORTANT: Clean up camera streams immediately after recording stops
+          cleanupStreams()
           
-          setIsRecording(false)
-          setVideoStream(null)
           resolve(filename)
           
         } catch (error) {
           console.error('❌ Stop recording error:', error)
+          cleanupStreams()
           resolve(null)
         }
       }
@@ -207,13 +258,14 @@ export const useVideoRecording = (): VideoRecordingHook => {
         console.log('🛑 MediaRecorder stopped')
       } catch (error) {
         console.error('❌ Stop error:', error)
+        cleanupStreams()
         resolve(null)
       }
     })
-  }, [isRecording])
+  }, [isRecording, cleanupStreams])
 
   // Send video to Render API for analysis
-const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
+  const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
     try {
       setIsAnalyzing(true)
       const apiUrl = getApiUrl()
@@ -281,7 +333,6 @@ const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
       
       if (error.name === 'AbortError') {
         console.error('⏰ Analysis timed out after 10 minutes')
-        // You might want to show a user-friendly timeout message
       } else if (error.message?.includes('fetch')) {
         console.error('🌐 Network error - check your internet connection')
       } else {
@@ -291,14 +342,14 @@ const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
       // Enhanced fallback results with timeout info
       const fallbackResults: AnalysisData = {
         video_info: {
-          duration: 30.0,
+          duration: 20.0,
           fps: 30.0,
-          total_frames: 900
+          total_frames: 600
         },
         analysis: {
-          frames_analyzed: 900,
-          frames_with_face: 850,
-          face_detection_rate: 94.4,
+          frames_analyzed: 600,
+          frames_with_face: 570,
+          face_detection_rate: 95.0,
           lazy_eye_detections: 0,
           detection_events: []
         },
@@ -329,6 +380,7 @@ const analyzeVideoWithAPI = async (videoBlob: Blob, filename: string) => {
     videoStream,
     analysisResults,
     isAnalyzing,
-    setAnalysisResults
+    setAnalysisResults,
+    cleanupStreams
   }
 }

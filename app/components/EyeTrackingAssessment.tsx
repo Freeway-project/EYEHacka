@@ -20,7 +20,9 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   const [consentChecked, setConsentChecked] = useState(false)
   const [eyeDirection, setEyeDirection] = useState<'center' | 'left' | 'right' | 'up' | 'down'>('center')
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [showDetailedResults, setShowDetailedResults] = useState(false);
+  const [showDetailedResults, setShowDetailedResults] = useState(false)
+  const assessmentTimerRef = useRef<NodeJS.Timeout | null>(null)
+
   const {
     isRecording,
     hasPermission,
@@ -31,8 +33,30 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     videoStream,
     analysisResults,
     isAnalyzing,
-    setAnalysisResults
+    setAnalysisResults,
+    cleanupStreams
   } = useVideoRecording()
+
+  // Clean up on component unmount or when going back
+  useEffect(() => {
+    return () => {
+      console.log('🧹 Component unmounting - cleaning up streams')
+      if (assessmentTimerRef.current) {
+        clearTimeout(assessmentTimerRef.current)
+      }
+      cleanupStreams()
+    }
+  }, [cleanupStreams])
+
+  // Handle back navigation with cleanup
+  const handleBack = () => {
+    console.log('⬅️ Going back - cleaning up streams')
+    if (assessmentTimerRef.current) {
+      clearTimeout(assessmentTimerRef.current)
+    }
+    cleanupStreams()
+    onBack()
+  }
 
   // Handle camera permission check
   const requestPermission = async () => {
@@ -92,11 +116,11 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     }
   }, [phase, countdown])
 
-  // Start assessment with recording - CHANGED TO 20 SECONDS
+  // Start assessment with recording
   const startAssessment = async () => {
     await startRecording()
     
-    const duration = 20000 // CHANGED: 20 seconds instead of 30
+    const duration = 20000 // 20 seconds
     const startTime = Date.now()
     
     // Eye movement sequence: center -> left -> right -> up -> down -> center (repeat)
@@ -107,7 +131,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
       const elapsed = Date.now() - startTime
       const progress = Math.min(elapsed / duration, 1)
       
-      // Change eye direction every 4 seconds (adjusted for 20s total)
+      // Change eye direction every 4 seconds
       const currentSequenceIndex = Math.floor((elapsed / 4000)) % eyeSequence.length
       if (currentSequenceIndex !== sequenceIndex) {
         sequenceIndex = currentSequenceIndex
@@ -133,13 +157,36 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     setSavedFilename(filename)
     console.log('💾 Video saved:', filename)
     setPhase('complete')
+    // Note: cleanupStreams is now called automatically in stopRecording
+  }
+
+  // Reset function for new assessment
+  const resetAssessment = () => {
+    console.log('🔄 Resetting assessment')
+    // Clean up any existing streams
+    cleanupStreams()
+    
+    // Reset all states
+    setPhase('intro')
+    setCountdown(3)
+    setToyPosition(0)
+    setAssessmentTime(0)
+    setEyeDirection('center')
+    setSavedFilename(null)
+    setConsentChecked(false)
+    setAnalysisResults(null)
+    setShowDetailedResults(false)
+    
+    if (assessmentTimerRef.current) {
+      clearTimeout(assessmentTimerRef.current)
+    }
   }
 
   if (phase === 'intro') {
     return (
       <div className="p-4 min-h-screen bg-white">
         <header className="flex items-center mb-6">
-          <button onClick={onBack} className="mr-4">
+          <button onClick={handleBack} className="mr-4">
             <ArrowLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-semibold">Eye Tracking Assessment</h1>
@@ -169,7 +216,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
             Start
           </button>
           <button 
-            onClick={onBack}
+            onClick={handleBack}
             className="flex-1 bg-gray-200 text-gray-800 py-3 px-6 rounded-full font-medium"
           >
             Home
@@ -472,28 +519,26 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
         
         <div className="space-y-3 w-full max-w-sm">
           <button 
-            onClick={() => {
-              // Reset states for new assessment
-              setPhase('intro')
-              setCountdown(3)
-              setToyPosition(0)
-              setAssessmentTime(0)
-              setEyeDirection('center')
-              setSavedFilename(null)
-              setConsentChecked(false)
-              setAnalysisResults(null)
-            }}
+            onClick={resetAssessment}
             className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
           >
             New Assessment
           </button>
           
           <button 
-            onClick={onBack}
+            onClick={handleBack}
             className="w-full bg-green-500 text-white py-3 px-8 rounded-full font-medium"
           >
             Done
           </button>
+        </div>
+        
+        {/* Camera Status Indicator */}
+        <div className="mt-4 text-center">
+          <div className="inline-flex items-center space-x-2 text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+            <span>Camera stopped</span>
+          </div>
         </div>
         
         {analysisResults && showDetailedResults && (
