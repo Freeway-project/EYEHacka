@@ -9,7 +9,7 @@ interface EyeTrackingAssessmentProps {
   onBack: () => void
 }
 
-type AssessmentPhase = 'intro' | 'consent' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'complete'
+type AssessmentPhase = 'intro' | 'consent' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'processing' | 'complete'
 
 export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentProps) {
   const [phase, setPhase] = useState<AssessmentPhase>('intro')
@@ -37,16 +37,12 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
   // Handle camera permission check
   const requestPermission = async () => {
     setPhase('permission')
-    console.log('📹 Requesting camera permission...')
     await startRecording()
     
     // If permission granted, stop immediately and go to countdown
     if (hasPermission) {
-      console.log('✅ Camera permission granted')
       await stopRecording()
       setTimeout(() => setPhase('countdown'), 500)
-    } else {
-      console.log('❌ Camera permission denied')
     }
   }
 
@@ -75,16 +71,13 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
       } else {
         console.log('✅ No lazy eye events detected')
       }
-      
-      console.log('🏁 API analysis process completed successfully!')
     }
   }, [analysisResults])
 
-  // Log analysis status with timing
+  // Log analysis status
   useEffect(() => {
     if (isAnalyzing) {
-      console.log('🔄 Analysis started - sending video to API...')
-      console.log('⏱️ API processing time will be logged when complete')
+      console.log('🔄 Analysis in progress...')
     }
   }, [isAnalyzing])
 
@@ -99,91 +92,70 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     }
   }, [phase, countdown])
 
+  // Handle transition to complete phase after analysis
+  useEffect(() => {
+    // Move to complete phase when:
+    // 1. We're in processing phase AND
+    // 2. Analysis is complete (either we have results OR analysis is no longer running)
+    if (phase === 'processing' && !isAnalyzing && (analysisResults || savedFilename)) {
+      console.log('🎉 Analysis complete, moving to results phase');
+      setPhase('complete');
+    }
+  }, [phase, isAnalyzing, analysisResults, savedFilename]);
+
   // Start assessment with recording
   const startAssessment = async () => {
-    console.log('🎬 Starting 20-second assessment recording...')
-    await startRecording()
-    
-    const duration = 20000 // 20 seconds
-    const startTime = Date.now()
-    
-    // Eye movement sequence: center -> left -> right -> up -> down -> center (repeat)
-    const eyeSequence = ['center', 'left', 'right', 'up', 'down'] as const
-    let sequenceIndex = 0
-    
-    console.log('👁️ Eye movement sequence will change every 4 seconds')
-    
-    const animate = () => {
-      const elapsed = Date.now() - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      
-      // Change eye direction every 4 seconds
-      const currentSequenceIndex = Math.floor((elapsed / 4000)) % eyeSequence.length
-      if (currentSequenceIndex !== sequenceIndex) {
-        sequenceIndex = currentSequenceIndex
-        setEyeDirection(eyeSequence[sequenceIndex])
-        console.log(`👁️ Eye direction changed to: ${eyeSequence[sequenceIndex]} at ${(elapsed/1000).toFixed(1)}s`)
-      }
-      
-      setAssessmentTime(Math.floor(elapsed / 1000))
-      
-      if (progress < 1) {
-        requestAnimationFrame(animate)
-      } else {
-        console.log('⏰ 20-second assessment completed')
-        completeAssessment()
-      }
-    }
-    
-    animate()
-  }
+    await startRecording();
 
-  // Complete assessment
+    const startTime = Date.now();
+    const duration = 20000; // 20 seconds
+    const eyeSequence = ['center', 'left', 'right', 'up', 'down'] as const;
+    let sequenceIndex = 0;
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const currentSequenceIndex = Math.floor(elapsed / 4000) % eyeSequence.length; // 4 seconds each direction
+
+      if (currentSequenceIndex !== sequenceIndex) {
+        sequenceIndex = currentSequenceIndex;
+        setEyeDirection(eyeSequence[sequenceIndex]);
+      }
+
+      setAssessmentTime(Math.floor(elapsed / 1000));
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+
+    // Stop after 20 seconds and move to processing phase
+    setTimeout(async () => {
+      console.log('🎬 20s elapsed, stopping recording and starting analysis...');
+      
+      try {
+        const filename = await stopRecording();
+        setSavedFilename(filename);
+        
+        // Move to processing phase to show loading state
+        console.log('⏳ Moving to processing phase...');
+        setPhase('processing');
+        
+      } catch (error) {
+        console.error('❌ Error during recording stop:', error);
+        // Even if there's an error, we can still proceed to complete
+        setPhase('complete');
+      }
+    }, duration);
+  };
+
+  // Complete assessment (keeping this for potential manual use)
   const completeAssessment = async () => {
     console.log('🏁 Assessment completed, stopping recording...')
-    
-    // Stop camera stream immediately
-    if (videoStream) {
-      console.log('📹 Stopping camera stream...')
-      videoStream.getTracks().forEach(track => {
-        track.stop()
-        console.log(`🔴 Stopped track: ${track.kind}`)
-      })
-    }
-    
-    const uploadStartTime = Date.now()
-    console.log('⏱️ Starting video upload and processing...')
-    
     const filename = await stopRecording()
     setSavedFilename(filename)
-    
-    const uploadEndTime = Date.now()
-    const uploadDuration = ((uploadEndTime - uploadStartTime) / 1000).toFixed(2)
-    console.log(`💾 Video upload completed in ${uploadDuration} seconds`)
     console.log('💾 Video saved:', filename)
-    
-    // Log video size information
-    if (videoPreview) {
-      try {
-        const response = await fetch(videoPreview)
-        const blob = await response.blob()
-        const sizeInBytes = blob.size
-        const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2)
-        const sizeInKB = (sizeInBytes / 1024).toFixed(2)
-        
-        console.log('📹 VIDEO SIZE INFORMATION:')
-        console.log('═══════════════════════════════════')
-        console.log(`📏 Size: ${sizeInBytes} bytes`)
-        console.log(`📏 Size: ${sizeInKB} KB`)
-        console.log(`📏 Size: ${sizeInMB} MB`)
-        console.log(`🎞️ Type: ${blob.type}`)
-        console.log(`⏱️ Upload Duration: ${uploadDuration}s`)
-        console.log('═══════════════════════════════════')
-      } catch (error) {
-        console.error('❌ Error getting video size:', error)
-      }
-    }
-    
     setPhase('complete')
   }
 
@@ -457,7 +429,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
             </div>
           )}
 
-          {/* Progress bar */}
+          {/* Progress bar - Fixed to use 20 seconds */}
           <div className="bg-gray-300 rounded-full h-3 mb-4">
             <div 
               className="bg-blue-500 rounded-full h-3 transition-all duration-1000"
@@ -473,6 +445,33 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
     )
   }
 
+  // New processing phase
+  if (phase === 'processing') {
+    return (
+      <div className="p-4 min-h-screen bg-blue-50 flex flex-col items-center justify-center">
+        <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mb-6"></div>
+        
+        <h1 className="text-2xl font-bold text-blue-800 mb-4">Processing Assessment</h1>
+        
+        <div className="bg-white rounded-lg p-6 mb-6 max-w-md text-center">
+          <p className="text-blue-700 font-medium mb-2">🔍 Analyzing video with AI...</p>
+          <p className="text-blue-600 text-sm">This may take up to 3 minutes</p>
+          <p className="text-blue-500 text-xs mt-2">Please keep this page open</p>
+        </div>
+
+        {savedFilename && (
+          <div className="bg-white rounded-lg p-4 mb-4 border border-blue-200 max-w-md">
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span>Video recorded successfully</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Analysis in progress...</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (phase === 'complete') {
     return (
       <div className="p-4 min-h-screen bg-green-50 flex flex-col items-center justify-center">
@@ -483,39 +482,31 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
         <h1 className="text-3xl font-bold text-green-800 mb-4">Assessment Complete!</h1>
         
         {/* Analysis Status */}
-  <div className="mb-6 text-center">
-  {isAnalyzing ? (
-    <div className="bg-blue-100 rounded-lg p-4 mb-4">
-      <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-      <p className="text-blue-800 font-medium">🔍 Analyzing video with AI...</p>
-      <p className="text-blue-600 text-sm">API processing in progress - check console for timing logs</p>
-      <p className="text-blue-500 text-xs mt-1">Camera has been stopped to save resources</p>
-    </div>
-  ) : analysisResults ? (
-    <div className="bg-green-100 rounded-lg p-4 mb-4">
-      <p className="text-green-800 font-medium">✅ Analysis completed!</p>
-      <p className="text-green-700">Risk Level: {analysisResults.risk_assessment.level}</p>
-      <p className="text-green-600 text-sm">Check console for detailed timing and results</p>
-      <button 
-        onClick={() => setShowDetailedResults(true)} 
-        className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium"
-      >
-        View Detailed Results
-      </button>
-    </div>
-  ) : (
-    <div className="bg-yellow-100 rounded-lg p-4 mb-4">
-      <p className="text-yellow-800 font-medium">⏳ Processing...</p>
-      <p className="text-yellow-600 text-sm">Upload complete - API analysis starting soon</p>
-    </div>
-  )}
-</div>
+        <div className="mb-6 text-center">
+          {analysisResults ? (
+            <div className="bg-green-100 rounded-lg p-4 mb-4">
+              <p className="text-green-800 font-medium">✅ Analysis completed!</p>
+              <p className="text-green-700">Risk Level: {analysisResults.risk_assessment.level}</p>
+              <button 
+                onClick={() => setShowDetailedResults(true)} 
+                className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium"
+              >
+                View Detailed Results
+              </button>
+            </div>
+          ) : (
+            <div className="bg-yellow-100 rounded-lg p-4 mb-4">
+              <p className="text-yellow-800 font-medium">⚠️ Analysis completed with fallback data</p>
+              <p className="text-yellow-600 text-sm">Check console for details</p>
+            </div>
+          )}
+        </div>
         
         {savedFilename && (
           <div className="bg-white rounded-lg p-4 mb-6 border border-green-200">
             <div className="flex items-center space-x-2 text-sm text-gray-600">
               <CheckCircle className="w-4 h-4 text-green-500" />
-              <span>Assessment video downloaded:</span>
+              <span>Assessment video saved:</span>
             </div>
             <p className="text-xs text-gray-500 mt-1 font-mono">{savedFilename}</p>
             <p className="text-xs text-gray-400 mt-1">
@@ -536,6 +527,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
               setSavedFilename(null)
               setConsentChecked(false)
               setAnalysisResults(null)
+              setShowDetailedResults(false)
             }}
             className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium"
           >
@@ -550,13 +542,13 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
           </button>
         </div>
         
-   {analysisResults && showDetailedResults && (
-  <AnalysisResults
-    analysis={analysisResults}
-    isAnalyzing={false}
-    onClose={() => setShowDetailedResults(false)}
-  />
-)}
+        {analysisResults && showDetailedResults && (
+          <AnalysisResults
+            analysis={analysisResults}
+            isAnalyzing={false}
+            onClose={() => setShowDetailedResults(false)}
+          />
+        )}
       </div>
     )
   }
