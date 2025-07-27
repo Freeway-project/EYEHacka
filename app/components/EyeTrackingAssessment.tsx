@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Camera, AlertCircle, CheckCircle } from 'lucide-react'
 import { useVideoRecording } from '@/hooks/videorec'
-import AnalysisResults from './EyeTrackingAnalysis'
+import EyeTrackingAnalysis from './EyeTrackingAnalysis'
+
 
 interface EyeTrackingAssessmentProps {
   onBack: () => void
@@ -466,7 +467,7 @@ export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentP
         </div>
         
         {analysisResults && showDetailedResults && (
-          <AnalysisResults
+          <EyeTrackingAnalysis
             analysis={analysisResults}
             isAnalyzing={false}
             onClose={() => setShowDetailedResults(false)}

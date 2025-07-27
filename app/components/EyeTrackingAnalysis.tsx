@@ -33,7 +33,7 @@ interface EyeTrackingAnalysisProps {
   onClose: () => void
 }
 
-export function EyeTrackingAnalysis({ analysis, isAnalyzing, onClose }: EyeTrackingAnalysisProps) {
+export default function EyeTrackingAnalysis({ analysis, isAnalyzing, onClose }: EyeTrackingAnalysisProps) {
   if (!isAnalyzing && !analysis) return null
   if (isAnalyzing) {
     return (
@@ -44,7 +44,7 @@ export function EyeTrackingAnalysis({ analysis, isAnalyzing, onClose }: EyeTrack
             <h3 className="text-xl font-semibold mb-2 text-gray-800">Uploading & Analyzing...</h3>
             <p className="text-gray-600">Please wait while we process and analyze the video.</p>
             <div className="mt-4 text-sm text-gray-500">
-              This may take up to 30 seconds including upload
+              This may take up to 20 seconds including upload
             </div>
           </div>
         </div>
