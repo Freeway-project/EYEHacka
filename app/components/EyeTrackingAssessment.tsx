@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, Camera, AlertCircle, CheckCircle } from 'lucide-react'
 import { useVideoRecording } from '@/hooks/videorec'
 import AnalysisResults from './EyeTrackingAnalysis'
+import FlashLightTest from './FlashLightTest'
 import Logo from './Logo'
 
 import Image from 'next/image'
@@ -12,7 +13,7 @@ interface EyeTrackingAssessmentProps {
   onBack: () => void
 }
 
-type AssessmentPhase = 'intro' | 'vision-screening' | 'consent' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'processing' | 'complete'
+type AssessmentPhase = 'intro' | 'vision-screening' | 'flashlight-test' | 'consent' | 'positioning' | 'permission' | 'countdown' | 'assessment' | 'processing' | 'complete'
 
 export default function EyeTrackingAssessment({ onBack }: EyeTrackingAssessmentProps) {
   const [phase, setPhase] = useState<AssessmentPhase>('intro')
@@ -226,7 +227,7 @@ if (loading) {
                 >
                   <div className="text-3xl mb-2">👀</div>
                   <p className="text-sm font-medium text-gray-800">Vision Screening</p>
-                  <p className="text-xs text-gray-500 mt-1">Basic vision tests</p>
+                  <p className="text-xs text-gray-500 mt-1">Flashlight & vision tests</p>
                 </button>
               </div>
             </div>
@@ -265,19 +266,45 @@ if (loading) {
             </div>
 
             <div className="bg-gray-100 rounded-2xl p-4 sm:p-6">
-              <h3 className="font-semibold mb-3 text-sm sm:text-base">What This Includes</h3>
-              <ul className="space-y-2 text-xs sm:text-sm text-gray-700">
-                <li>• Visual acuity testing</li>
-                <li>• Color vision assessment</li>
-                <li>• Depth perception evaluation</li>
-                <li>• Basic eye movement tracking</li>
-              </ul>
+              <h3 className="font-semibold mb-3 text-sm sm:text-base">Available Tests</h3>
+              <div className="space-y-3">
+                <button 
+                  onClick={() => setPhase('flashlight-test')}
+                  className="w-full bg-white rounded-xl p-4 text-left hover:bg-yellow-50 active:scale-95 transition-all shadow-sm border border-gray-200"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="text-2xl">💡</div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">Flashlight Test</p>
+                      <p className="text-xs text-gray-500">Pupil light reflex assessment</p>
+                    </div>
+                  </div>
+                </button>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 opacity-60">
+                  <div className="flex items-center space-x-3">
+                    <div className="text-2xl">👁️</div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Visual Acuity Test</p>
+                      <p className="text-xs text-gray-400">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 opacity-60">
+                  <div className="flex items-center space-x-3">
+                    <div className="text-2xl">🌈</div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Color Vision Test</p>
+                      <p className="text-xs text-gray-400">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-yellow-100 rounded-2xl p-4 sm:p-6 border border-yellow-200">
-              <h3 className="font-semibold mb-3 text-yellow-800 text-sm sm:text-base">Coming Soon</h3>
-              <p className="text-yellow-700 text-xs sm:text-sm">
-                This feature is currently under development. Please use the OcuScan Assessment for eye tracking analysis.
+            <div className="bg-blue-100 rounded-2xl p-4 sm:p-6 border border-blue-200">
+              <h3 className="font-semibold mb-3 text-blue-800 text-sm sm:text-base">💡 Available Now</h3>
+              <p className="text-blue-700 text-xs sm:text-sm">
+                The Flashlight Test is ready to use! It analyzes pupil light reflex using your device's camera flash.
               </p>
             </div>
 
@@ -298,6 +325,15 @@ if (loading) {
           </div>
         </div>
       </div>
+    )
+  }
+
+  if (phase === 'flashlight-test') {
+    return (
+      <FlashLightTest 
+        onBack={() => setPhase('vision-screening')} 
+        apiEndpoint="/api/flashlight-test"
+      />
     )
   }
 
