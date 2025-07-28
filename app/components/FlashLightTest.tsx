@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Camera, AlertCircle, CheckCircle, Flashlight } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { ArrowLeft, Camera, Flashlight, CheckCircle, AlertCircle } from 'lucide-react'
 import axios from 'axios'
 
 interface FlashlightTestProps {
@@ -9,13 +9,10 @@ interface FlashlightTestProps {
   apiEndpoint?: string
 }
 
-type TestPhase = 'intro' | 'permission' | 'instructions' | 'countdown' | 'capture' | 'processing' | 'complete'
+type TestPhase = 'setup' | 'ready' | 'capturing' | 'captured'
 
 export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-test' }: FlashlightTestProps) {
-  const [phase, setPhase] = useState<TestPhase>('intro')
-  const [countdown, setCountdown] = useState(5)
-  const [hasPermission, setHasPermission] = useState(false)
-  const [permissionError, setPermissionError] = useState<string | null>(null)
+  const [phase, setPhase] = useState<TestPhase>('setup')
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [apiResponse, setApiResponse] = useState<any>(null)
@@ -25,140 +22,94 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
-  // Request camera permission with rear camera and flash
-  const requestCameraPermission = async () => {
-    setPhase('permission')
-    setPermissionError(null)
-    
+  // Initialize camera
+  const initializeCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { exact: 'environment' }, // Rear camera
+          facingMode: 'environment', // Rear camera
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         }
       })
       
       streamRef.current = stream
-      setHasPermission(true)
-      
       if (videoRef.current) {
         videoRef.current.srcObject = stream
       }
-      
-      setPhase('instructions')
-    } catch (err: any) {
-      console.error('Camera permission error:', err)
-      if (err.name === 'NotAllowedError') {
-        setPermissionError('Camera access denied. Please allow camera permission.')
-      } else if (err.name === 'NotFoundError') {
-        setPermissionError('No rear camera found. Please ensure your device has a rear camera.')
-      } else if (err.name === 'OverconstrainedError') {
-        // Fallback to any available camera
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: 'environment', // Try rear camera without exact constraint
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            }
-          })
-          streamRef.current = fallbackStream
-          setHasPermission(true)
-          if (videoRef.current) {
-            videoRef.current.srcObject = fallbackStream
-          }
-          setPhase('instructions')
-        } catch (fallbackErr) {
-          setPermissionError('Unable to access rear camera. Using default camera.')
-        }
-      } else {
-        setPermissionError('Unable to access camera. Please check your device settings.')
-      }
+      setPhase('ready')
+    } catch (err) {
+      const error = err as DOMException
+      console.error('Camera error:', error)
+      setError('Unable to access camera. Please check permissions.')
     }
   }
-
-  // Start countdown
-  const startCountdown = () => {
-    setPhase('countdown')
-    setCountdown(5)
-  }
-
-  // Countdown effect
-  useEffect(() => {
-    if (phase === 'countdown' && countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
-      return () => clearTimeout(timer)
-    } else if (phase === 'countdown' && countdown === 0) {
-      capturePhoto()
-    }
-  }, [phase, countdown])
 
   // Capture photo with flash
   const capturePhoto = async () => {
-    setPhase('capture')
+    if (!streamRef.current || !videoRef.current || !canvasRef.current) return
+    
+    setPhase('capturing')
+    setError(null)
     
     try {
-      // Enable flash if available
-      const track = streamRef.current?.getVideoTracks()[0]
+      // Enable flash
+      const track = streamRef.current.getVideoTracks()[0]
+      let flashEnabled = false
+      
       if (track) {
         const capabilities = track.getCapabilities()
-        //@ts-ignore
-        if (capabilities.torch) {
+        if ('torch' in capabilities && capabilities.torch) {
           await track.applyConstraints({
-            advanced: [{ torch: true } as any]
+            advanced: [{ torch: true } as MediaTrackConstraintSet]
           })
+          flashEnabled = true
         }
       }
 
-      // Small delay to ensure flash is on
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Wait for flash to activate
+      await new Promise(resolve => setTimeout(resolve, 300))
 
       // Capture the photo
-      if (videoRef.current && canvasRef.current) {
-        const canvas = canvasRef.current
-        const video = videoRef.current
+      const canvas = canvasRef.current
+      const video = videoRef.current
+      
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(video, 0, 0)
         
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(video, 0, 0)
-          
-          // Convert to blob
-          canvas.toBlob(async (blob) => {
-            if (blob) {
-              const photoUrl = URL.createObjectURL(blob)
-              setCapturedPhoto(photoUrl)
-              
-              // Turn off flash
-              //@ts-ignore
-              const capabilities = track.getCapabilities()
-              //@ts-ignore
-              if (track && capabilities.torch) {
-                await track.applyConstraints({
-                  advanced: [{ torch: false } as any]
-                })
-              }
-              
-              // Send to API
-              await sendPhotoToAPI(blob)
-            }
-          }, 'image/jpeg', 0.9)
+        // Turn off flash
+        if (flashEnabled && track) {
+          await track.applyConstraints({
+            advanced: [{ torch: false } as MediaTrackConstraintSet]
+          })
         }
+        
+        // Convert to blob and display
+        canvas.toBlob(async (blob) => {
+          if (blob) {
+            const photoUrl = URL.createObjectURL(blob)
+            setCapturedPhoto(photoUrl)
+            setPhase('captured')
+            
+            // Send to API
+            await sendToAPI(blob)
+          }
+        }, 'image/jpeg', 0.9)
       }
     } catch (err) {
       console.error('Capture error:', err)
       setError('Failed to capture photo')
-      setPhase('complete')
+      setPhase('ready')
     }
   }
 
   // Send photo to API
-  const sendPhotoToAPI = async (photoBlob: Blob) => {
+  const sendToAPI = async (photoBlob: Blob) => {
     setIsProcessing(true)
-    setPhase('processing')
     
     try {
       const formData = new FormData()
@@ -167,366 +118,204 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
       formData.append('test_type', 'flashlight_reflex')
       
       const response = await axios.post(apiEndpoint, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 30000, // 30 second timeout
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 30000,
       })
       
       setApiResponse(response.data)
-      setPhase('complete')
-    } catch (err: any) {
-      console.error('API call error:', err)
-      if (err.code === 'ECONNABORTED') {
+    } catch (err) {
+      const error = err as any
+      console.error('API error:', error)
+      if (error.code === 'ECONNABORTED') {
         setError('Request timeout. Please try again.')
-      } else if (err.response) {
-        setError(`Server error: ${err.response.status} - ${err.response.data?.message || 'Unknown error'}`)
+      } else if (error.response) {
+        setError(`Server error: ${error.response.status}`)
       } else {
-        setError('Network error. Please check your connection.')
+        setError('Network error. Please check connection.')
       }
-      setPhase('complete')
     } finally {
       setIsProcessing(false)
     }
   }
 
-  // Cleanup camera stream
-  const stopCamera = () => {
+  // Cleanup
+  const cleanup = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
+    if (capturedPhoto) {
+      URL.revokeObjectURL(capturedPhoto)
+    }
   }
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopCamera()
-      if (capturedPhoto) {
-        URL.revokeObjectURL(capturedPhoto)
-      }
-    }
-  }, [capturedPhoto])
-
-  // Reset function
-  const resetTest = () => {
+  // Reset for new capture
+  const resetCapture = () => {
+    cleanup()
     setCapturedPhoto(null)
     setApiResponse(null)
     setError(null)
-    setCountdown(5)
-    setPhase('intro')
-    stopCamera()
+    setPhase('setup')
   }
 
-  if (phase === 'intro') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-50 flex flex-col">
-        <div className="px-4 pt-safe">
-          <header className="flex items-center py-4">
-            <button onClick={onBack} className="mr-3 p-2 -ml-2 rounded-full hover:bg-white/50 transition-colors">
-              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
-            <Flashlight className="w-8 h-8 sm:w-10 sm:h-10 text-orange-600 mr-3" />
-            <span className="text-lg sm:text-xl font-semibold">Flashlight Test</span>
-          </header>
-        </div>
-
-        <div className="flex-1 px-4 pb-safe">
-          <div className="max-w-md mx-auto space-y-6">
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg">
-              <h2 className="text-lg sm:text-xl font-semibold mb-3 text-orange-800">Pupil Light Reflex Test</h2>
-              <p className="text-gray-700 text-sm sm:text-base leading-relaxed">
-                This test uses the camera flash to assess pupil light reflex, which can help detect vision problems and neurological issues.
-              </p>
-            </div>
-
-            <div className="bg-orange-100 rounded-2xl p-4 sm:p-6">
-              <h3 className="font-semibold mb-3 text-sm sm:text-base text-orange-800">What to Expect</h3>
-              <ul className="space-y-2 text-xs sm:text-sm text-orange-700">
-                <li>• Position the device 30-40cm from the patient's face</li>
-                <li>• Look directly at the rear camera</li>
-                <li>• A bright flash will activate automatically</li>
-                <li>• The photo will be analyzed for pupil response</li>
-              </ul>
-            </div>
-
-            <div className="bg-red-100 rounded-2xl p-4 sm:p-6 border border-red-200">
-              <h3 className="font-semibold mb-3 text-red-800 text-sm sm:text-base">⚠️ Important</h3>
-              <ul className="space-y-2 text-xs sm:text-sm text-red-700">
-                <li>• Ensure the room is dimly lit</li>
-                <li>• Remove glasses if wearing any</li>
-                <li>• The flash may be bright - this is normal</li>
-                <li>• Keep eyes open during the flash</li>
-              </ul>
-            </div>
-
-            <button 
-              onClick={requestCameraPermission}
-              className="w-full bg-orange-500 text-white py-4 px-6 rounded-full font-medium text-sm sm:text-base hover:bg-orange-600 active:scale-95 transition-all"
-            >
-              Start Flashlight Test
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'permission') {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 pb-safe">
-        <div className="max-w-sm mx-auto text-center space-y-6">
-          <Camera className="w-16 h-16 text-orange-500 mx-auto" />
-          
-          {permissionError ? (
-            <>
-              <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-              <div className="space-y-3">
-                <h2 className="text-lg sm:text-xl font-semibold text-red-600">Camera Access Required</h2>
-                <p className="text-center text-gray-700 text-sm sm:text-base">
-                  {permissionError}
-                </p>
-              </div>
-              <div className="space-y-3 w-full">
-                <button 
-                  onClick={requestCameraPermission}
-                  className="w-full bg-orange-500 text-white py-3 px-6 rounded-full font-medium text-sm sm:text-base hover:bg-orange-600 active:scale-95 transition-all"
-                >
-                  Try Again
-                </button>
-                <button 
-                  onClick={onBack}
-                  className="w-full bg-gray-200 text-gray-800 py-3 px-6 rounded-full font-medium text-sm sm:text-base hover:bg-gray-300 active:scale-95 transition-all"
-                >
-                  Back
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="space-y-3">
-                <h2 className="text-lg sm:text-xl font-semibold">Requesting Camera Access</h2>
-                <p className="text-center text-gray-700 text-sm sm:text-base">
-                  Please allow rear camera access to continue with the test.
-                </p>
-              </div>
-              <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full mx-auto"></div>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'instructions') {
-    return (
-      <div className="min-h-screen bg-white flex flex-col">
-        <div className="px-4 pt-safe">
-          <header className="flex items-center py-4">
-            <button onClick={() => setPhase('intro')} className="mr-3 p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
-              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" />
-            </button>
-            <Flashlight className="w-6 h-6 text-orange-600 mr-2" />
-            <span className="text-lg sm:text-xl font-semibold">Position Setup</span>
-          </header>
-        </div>
-
-        <div className="flex-1 px-4 pb-safe">
-          <div className="max-w-md mx-auto space-y-6">
-            <div className="text-center">
-              <h3 className="text-lg sm:text-xl font-semibold mb-2">Get Ready</h3>
-              <p className="text-gray-600 text-sm sm:text-base">
-                Position yourself properly for the flashlight test
-              </p>
-            </div>
-
-            {/* Camera Preview */}
-            <div className="bg-black rounded-2xl p-2 aspect-[3/4] relative overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                muted
-                playsInline
-                className="w-full h-full object-cover rounded-xl"
-              />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="border-2 border-white border-dashed rounded-full w-32 h-32 flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">Face Area</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-orange-50 rounded-2xl p-4 sm:p-6">
-              <h3 className="font-semibold mb-3 text-sm sm:text-base text-orange-800">Instructions</h3>
-              <ul className="space-y-2 text-xs sm:text-sm text-orange-700">
-                <li>• Hold device steady, 30-40cm from face</li>
-                <li>• Look directly at the camera lens</li>
-                <li>• Keep both eyes open</li>
-                <li>• Stay still during the countdown</li>
-                <li>• The flash will activate automatically</li>
-              </ul>
-            </div>
-
-            <button 
-              onClick={startCountdown}
-              className="w-full bg-orange-500 text-white py-4 px-6 rounded-full font-medium text-sm sm:text-base hover:bg-orange-600 active:scale-95 transition-all"
-            >
-              Ready - Start Test
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'countdown') {
-    return (
-      <div className="min-h-screen bg-black flex flex-col">
-        {/* Camera Preview */}
-        <div className="flex-1 relative">
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          
-          {/* Countdown Overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="bg-black bg-opacity-50 rounded-full w-32 h-32 flex items-center justify-center mb-8">
-              <span className="text-white text-6xl font-bold">{countdown}</span>
-            </div>
-            
-            <div className="bg-orange-500 px-6 py-3 rounded-full">
-              <span className="text-white font-semibold text-lg">Look at the camera</span>
-            </div>
-            
-            <div className="mt-4 bg-black bg-opacity-70 px-4 py-2 rounded-full">
-              <span className="text-white text-sm">Flash will activate automatically</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'capture') {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
-            <Flashlight className="w-8 h-8 text-yellow-800" />
-          </div>
-          <h2 className="text-xl font-semibold">Capturing Photo...</h2>
-          <p className="text-gray-600">Please keep still</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'processing') {
-    return (
-      <div className="min-h-screen bg-blue-50 flex flex-col items-center justify-center px-4 pb-safe">
-        <div className="max-w-sm mx-auto text-center space-y-6">
-          <div className="animate-spin w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
-          
-          <h1 className="text-xl sm:text-2xl font-bold text-blue-800">Processing Photo</h1>
-          
-          <div className="bg-white rounded-lg p-4 sm:p-6">
-            <p className="text-blue-700 font-medium mb-2 text-sm sm:text-base">🔍 Analyzing pupil light reflex...</p>
-            <p className="text-blue-600 text-xs sm:text-sm">This may take a few moments</p>
-          </div>
-
-          {capturedPhoto && (
-            <div className="bg-white rounded-lg p-4 border border-blue-200">
-              <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                <span className="text-xs sm:text-sm">Photo captured successfully</span>
-              </div>
-              <img 
-                src={capturedPhoto} 
-                alt="Captured test photo" 
-                className="w-full h-32 object-cover rounded-lg"
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (phase === 'complete') {
-    return (
-      <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center px-4 pb-safe">
-        <div className="max-w-sm mx-auto text-center space-y-6">
-          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-500 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle className="w-10 h-10 sm:w-12 sm:h-12 text-white" />
-          </div>
-          
-          <h1 className="text-2xl sm:text-3xl font-bold text-green-800">Test Complete!</h1>
-          
-          {/* Results */}
-          <div>
-            {error ? (
-              <div className="bg-red-100 rounded-lg p-4 sm:p-6">
-                <p className="text-red-800 font-medium text-sm sm:text-base">❌ Error occurred</p>
-                <p className="text-red-600 text-xs sm:text-sm mt-1">{error}</p>
-              </div>
-            ) : apiResponse ? (
-              <div className="bg-green-100 rounded-lg p-4 sm:p-6">
-                <p className="text-green-800 font-medium text-sm sm:text-base">✅ Analysis completed!</p>
-                <div className="mt-2 text-left">
-                  <pre className="text-xs text-green-700 whitespace-pre-wrap">
-                    {JSON.stringify(apiResponse, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-yellow-100 rounded-lg p-4 sm:p-6">
-                <p className="text-yellow-800 font-medium text-sm sm:text-base">⚠️ Test completed</p>
-                <p className="text-yellow-600 text-xs sm:text-sm">No response from server</p>
-              </div>
-            )}
-          </div>
-          
-          {capturedPhoto && (
-            <div className="bg-white rounded-lg p-4 border border-green-200">
-              <div className="flex items-start space-x-2 text-sm text-gray-600 mb-3">
-                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                <span className="text-xs sm:text-sm">Test photo captured</span>
-              </div>
-              <img 
-                src={capturedPhoto} 
-                alt="Test result" 
-                className="w-full h-40 object-cover rounded-lg"
-              />
-            </div>
-          )}
-          
-          <div className="space-y-3 w-full">
-            <button 
-              onClick={resetTest}
-              className="w-full bg-blue-500 text-white py-3 px-8 rounded-full font-medium text-sm sm:text-base hover:bg-blue-600 active:scale-95 transition-all"
-            >
-              Run Another Test
-            </button>
-            
-            <button 
-              onClick={onBack}
-              className="w-full bg-green-500 text-white py-3 px-8 rounded-full font-medium text-sm sm:text-base hover:bg-green-600 active:scale-95 transition-all"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Hidden canvas for photo capture
   return (
-    <div>
+    <div className="min-h-screen bg-gray-900 flex flex-col">
+      {/* Header */}
+      <div className="px-4 pt-safe bg-gray-800">
+        <header className="flex items-center py-4">
+          <button 
+            onClick={() => { cleanup(); onBack(); }}
+            className="mr-3 p-2 -ml-2 rounded-full hover:bg-gray-700 transition-colors"
+          >
+            <ArrowLeft className="w-6 h-6 text-white" />
+          </button>
+          <Flashlight className="w-8 h-8 text-yellow-400 mr-3" />
+          <span className="text-xl font-semibold text-white">Flashlight Test</span>
+        </header>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 relative">
+        {phase === 'setup' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+            <div className="text-center space-y-6 px-4">
+              <Camera className="w-16 h-16 text-gray-400 mx-auto" />
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-2">Ready to Test</h2>
+                <p className="text-gray-300">Position device 30-40cm from face</p>
+                <p className="text-gray-400 text-sm mt-2">Flash will activate automatically</p>
+              </div>
+              <button 
+                onClick={initializeCamera}
+                className="bg-yellow-500 text-black px-8 py-3 rounded-full font-semibold hover:bg-yellow-400 transition-colors"
+              >
+                Start Camera
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phase === 'ready' && (
+          <>
+            {/* Camera Feed */}
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            
+            {/* Overlay */}
+            <div className="absolute inset-0 flex flex-col justify-between p-6">
+              <div className="text-center">
+                <div className="bg-black bg-opacity-50 px-4 py-2 rounded-full inline-block">
+                  <span className="text-white font-medium">Look directly at camera</span>
+                </div>
+              </div>
+
+              {/* Face Guide */}
+              <div className="flex-1 flex items-center justify-center">
+                <div className="border-2 border-white border-dashed rounded-full w-40 h-40 flex items-center justify-center">
+                  <span className="text-white text-sm font-medium">Face Here</span>
+                </div>
+              </div>
+
+              {/* Capture Button */}
+              <div className="text-center">
+                <button 
+                  onClick={capturePhoto}
+                  className="bg-yellow-500 text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-yellow-400 transition-colors flex items-center mx-auto space-x-2"
+                >
+                  <Flashlight className="w-6 h-6" />
+                  <span>Capture with Flash</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {phase === 'capturing' && (
+          <div className="absolute inset-0 bg-white flex items-center justify-center">
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-yellow-400 rounded-full flex items-center justify-center mx-auto animate-pulse">
+                <Flashlight className="w-8 h-8 text-yellow-800" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800">Capturing...</h2>
+              <p className="text-gray-600">Keep still</p>
+            </div>
+          </div>
+        )}
+
+        {phase === 'captured' && capturedPhoto && (
+          <div className="absolute inset-0 bg-gray-900 overflow-auto">
+            <div className="p-4 space-y-6">
+              {/* Captured Photo */}
+              <div className="bg-white rounded-lg overflow-hidden">
+                <img 
+                  src={capturedPhoto} 
+                  alt="Captured photo" 
+                  className="w-full h-64 object-cover"
+                />
+                <div className="p-4">
+                  <div className="flex items-center space-x-2 text-green-600">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="font-medium">Photo captured successfully</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* API Status */}
+              <div className="bg-gray-800 rounded-lg p-4">
+                <h3 className="text-white font-semibold mb-3">API Status</h3>
+                {isProcessing ? (
+                  <div className="flex items-center space-x-3 text-blue-400">
+                    <div className="animate-spin w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full"></div>
+                    <span>Sending to server...</span>
+                  </div>
+                ) : error ? (
+                  <div className="flex items-center space-x-2 text-red-400">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>{error}</span>
+                  </div>
+                ) : apiResponse ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 text-green-400">
+                      <CheckCircle className="w-5 h-5" />
+                      <span>Successfully sent to API</span>
+                    </div>
+                    <div className="bg-gray-700 rounded p-3 mt-3">
+                      <pre className="text-gray-300 text-sm whitespace-pre-wrap overflow-auto">
+                        {JSON.stringify(apiResponse, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-gray-400">No API response yet</div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-3">
+                <button 
+                  onClick={resetCapture}
+                  className="w-full bg-blue-500 text-white py-3 px-6 rounded-full font-medium hover:bg-blue-600 transition-colors"
+                >
+                  Take Another Photo
+                </button>
+                <button 
+                  onClick={() => { cleanup(); onBack(); }}
+                  className="w-full bg-gray-600 text-white py-3 px-6 rounded-full font-medium hover:bg-gray-500 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hidden canvas for photo capture */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   )
