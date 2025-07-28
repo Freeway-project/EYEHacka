@@ -449,13 +449,26 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
 
             {/* Countdown Overlay */}
             {phase === 'countdown' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70">
                 <div className="text-center">
-                  <div className="text-white text-8xl font-bold mb-4 animate-pulse">
-                    {countdown}
+                  <div className="mb-8">
+                    <div className="text-white text-2xl font-semibold mb-2 animate-pulse">
+                      GET READY
+                    </div>
+                    <div className="text-white text-lg opacity-90">
+                      Flash photo in...
+                    </div>
                   </div>
-                  <div className="bg-yellow-500 text-black px-6 py-2 rounded-full font-semibold">
-                    Get Ready - Flash Coming
+                  <div className="relative">
+                    <div className="text-white font-bold mb-6" style={{ fontSize: '120px', textShadow: '0 0 20px rgba(255,255,255,0.5)' }}>
+                      {countdown}
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-48 h-48 rounded-full border-8 border-white opacity-30 animate-ping"></div>
+                    </div>
+                  </div>
+                  <div className="bg-yellow-500 text-black px-8 py-3 rounded-full font-bold text-lg animate-pulse">
+                    📸 FLASH COMING!
                   </div>
                 </div>
               </div>
