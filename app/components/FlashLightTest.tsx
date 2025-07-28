@@ -103,6 +103,7 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
       const track = streamRef.current?.getVideoTracks()[0]
       if (track) {
         const capabilities = track.getCapabilities()
+        //@ts-ignore
         if (capabilities.torch) {
           await track.applyConstraints({
             advanced: [{ torch: true } as any]
@@ -132,6 +133,9 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
               setCapturedPhoto(photoUrl)
               
               // Turn off flash
+              //@ts-ignore
+              const capabilities = track.getCapabilities()
+              //@ts-ignore
               if (track && capabilities.torch) {
                 await track.applyConstraints({
                   advanced: [{ torch: false } as any]
