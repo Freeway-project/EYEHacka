@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Eye, Menu, Trophy, Star, Gift, Activity } from 'lucide-react'
 import EyeTrackingAssessment from '@/components/EyeTrackingAssessment'
+import Image from 'next/image'
+
 
 export default function HomePage() {
   const [currentView, setCurrentView] = useState<'home' | 'eyeTracking' | 'kidsTest'>('home')
@@ -52,20 +54,23 @@ export default function HomePage() {
   }
 
   return (
-    <div className="p-4 bg-white min-h-screen">
+    <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
       {/* Header */}
       <header className="flex items-center justify-between mb-8 pt-2">
-        <div className="flex items-center space-x-2">
-          <Eye className="eye-icon" />
-          <span className="text-xl font-semibold text-gray-800">Eye Care +</span>
-        </div>
-        {/* <button className="px-4 py-2 bg-blue-200 text-blue-800 rounded-full text-sm font-medium">
-          <Menu className="w-4 h-4" />
-        </button> */}
+
       </header>
 
       {/* Main Content */}
       <div className="space-y-6 flex flex-col items-center justify-center">
+        
+        {/* Welcome Section */}
+        <div className="text-center mb-6">
+             <Image src="/logo.png" alt="EYEHacka logo" width={100} height={100}/>
+
+          <p className="text-gray-600 mt-4 max-w-md mx-auto">
+            Advanced eye tracking technology for early detection of vision issues in children
+          </p>
+        </div>
         
         {/* API Health Check Section */}
         <div className="w-full max-w-md space-y-3">
@@ -91,14 +96,14 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Eye Tracking Game and Kids Eye Test Buttons */}
+        {/* Eye Tracking Assessment Button */}
         <div className="space-y-3 mt-8 flex flex-col items-center justify-center">
           <button
             onClick={() => setCurrentView('eyeTracking')}
-            className="w-full bg-blue-200 text-blue-800 py-4 px-6 rounded-full font-medium text-lg flex items-center justify-center space-x-2"
+            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-4 px-8 rounded-full font-medium text-lg flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl transition-all"
           >
-            <Eye className="w-5 h-5" />
-            <span>Eye Tracking Game</span>
+            <Eye className="w-6 h-6" />
+            <span>Start Eye Assessment</span>
           </button>
           
           {apiStatus === 'offline' && (
