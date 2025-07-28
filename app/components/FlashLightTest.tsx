@@ -123,19 +123,10 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
     }
   }
 
-  // Send to API
+  // TODO: Implement upload API later
   const sendToAPI = async (photoBlob: Blob) => {
-    try {
-      const formData = new FormData()
-      formData.append('photo', photoBlob, 'flash-test.jpg')
-      
-      await axios.post(apiEndpoint, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 30000,
-      })
-    } catch (err) {
-      console.error('API error:', err)
-    }
+    console.log('Photo captured, ready for API upload:', photoBlob)
+    // API implementation will be added later
   }
 
   // Reset
@@ -221,27 +212,49 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
         )}
 
         {phase === 'result' && capturedPhoto && (
-          <div className="absolute inset-0 bg-black flex flex-col">
-            {/* Captured Photo */}
-            <div className="flex-1 flex items-center justify-center p-4">
-              <img 
-                src={capturedPhoto} 
-                alt="Captured photo" 
-                className="max-w-full max-h-full object-contain rounded-lg"
-              />
+          <div className="absolute inset-0 bg-gray-50 flex flex-col">
+            {/* Result Header */}
+            <div className="bg-white shadow-sm p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-800">Test Results</h2>
+                <div className="bg-green-100 px-3 py-1 rounded-full">
+                  <span className="text-green-800 text-sm font-medium">✓ Photo Captured</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Captured Photo Display */}
+            <div className="flex-1 p-4">
+              <div className="bg-white rounded-lg shadow-md overflow-hidden h-full">
+                <div className="p-3 border-b border-gray-200">
+                  <h3 className="font-semibold text-gray-700">Flashlight Test Photo</h3>
+                  <p className="text-sm text-gray-500">Captured: {new Date().toLocaleString()}</p>
+                </div>
+                <div className="p-4 flex items-center justify-center bg-gray-100 h-full">
+                  <img 
+                    src={capturedPhoto} 
+                    alt="Flashlight test result" 
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
+                  />
+                </div>
+              </div>
             </div>
             
             {/* Bottom Actions */}
-            <div className="p-4 space-y-3">
+            <div className="p-4 bg-white border-t border-gray-200 space-y-3">
+              <div className="text-center mb-3">
+                <p className="text-sm text-gray-600">Photo ready for analysis</p>
+                <p className="text-xs text-gray-400">Upload API will be implemented later</p>
+              </div>
               <button 
                 onClick={reset}
-                className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold"
+                className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 transition-colors"
               >
                 Take Another Photo
               </button>
               <button 
                 onClick={onBack}
-                className="w-full bg-gray-600 text-white py-3 rounded-full font-semibold"
+                className="w-full bg-gray-500 text-white py-3 rounded-full font-semibold hover:bg-gray-600 transition-colors"
               >
                 Done
               </button>
