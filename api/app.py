@@ -20,6 +20,14 @@ HIST_FRAMES = 60            # frames stored per sweep
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 ALLOWED_EXTENSIONS = {'webm', 'mp4', 'avi', 'mov'}
 
+# --- Haar cascades for leukocoria detection ---
+FACE_CASCADE = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+EYE_CASCADE = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_eye.xml"
+)
+
 # ================= FLASK APP SETUP =================
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
@@ -341,6 +349,62 @@ def not_found(e):
 @app.errorhandler(500)
 def internal_error(e):
     return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+def detect_leukocoria(img: np.ndarray) -> bool:
+    """
+    Returns True if *any* eye in the image shows a white/yellow reflex,
+    otherwise False.
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = FACE_CASCADE.detectMultiScale(gray, 1.3, 5)
+
+    for (x, y, w, h) in faces:
+        roi_gray  = gray[y : y + h, x : x + w]
+        roi_color = img[y : y + h, x : x + w]
+
+        for (ex, ey, ew, eh) in EYE_CASCADE.detectMultiScale(roi_gray):
+            eye = roi_color[ey : ey + eh, ex : ex + ew]
+
+            gray_eye = cv2.cvtColor(eye, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(
+                cv2.GaussianBlur(gray_eye, (5, 5), 0), 50, 255, cv2.THRESH_BINARY_INV
+            )
+            cnts, _ = cv2.findContours(
+                thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            if not cnts:
+                continue
+
+            pupil = max(cnts, key=cv2.contourArea)
+            mask = np.zeros(eye.shape[:2], dtype="uint8")
+            cv2.drawContours(mask, [pupil], -1, 255, -1)
+
+            mean_bgr = cv2.mean(eye, mask=mask)[:3]
+            h, s, v = cv2.cvtColor(
+                np.uint8([[mean_bgr]]), cv2.COLOR_BGR2HSV
+            )[0][0]
+
+            if s < 50 and v > 120:          # white/yellow reflex
+                return True
+    return False
+
+@app.route("/detect", methods=["POST"])
+def detect_endpoint():
+    """
+    POST /detect
+    form-data key 'file' -> image
+    returns JSON {"leukocoria": true/false}
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "no file"}), 400
+
+    file_bytes = np.frombuffer(request.files["file"].read(), np.uint8)
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+    if img is None:
+        return jsonify({"error": "invalid image"}), 400
+
+    return jsonify({"leukocoria": detect_leukocoria(img)})
 
 # ================= MAIN ENTRY POINT =================
 if __name__ == '__main__':
