@@ -337,19 +337,6 @@ def upload_video():
 def ping():
     return "pong", 200
 
-# Error handlers
-@app.errorhandler(413)
-def too_large(e):
-    return jsonify({'success': False, 'error': 'File too large (max 50MB)'}), 413
-
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def internal_error(e):
-    return jsonify({'success': False, 'error': 'Internal server error'}), 500
-
 
 def detect_leukocoria(img: np.ndarray) -> bool:
     """
@@ -393,18 +380,39 @@ def detect_leukocoria(img: np.ndarray) -> bool:
 def detect_endpoint():
     """
     POST /detect
-    form-data key 'file' -> image
+    form-data key 'photo' or 'file' -> image
     returns JSON {"leukocoria": true/false}
     """
-    if "file" not in request.files:
-        return jsonify({"error": "no file"}), 400
+    # Check for both 'photo' (from flashlight test) and 'file' (generic)
+    file_obj = request.files.get('photo') or request.files.get('file')
+    if not file_obj:
+        return jsonify({"error": "No image file provided (expected 'photo' or 'file')"}), 400
 
-    file_bytes = np.frombuffer(request.files["file"].read(), np.uint8)
+    file_bytes = np.frombuffer(file_obj.read(), np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     if img is None:
-        return jsonify({"error": "invalid image"}), 400
+        return jsonify({"error": "Invalid image format"}), 400
 
-    return jsonify({"leukocoria": detect_leukocoria(img)})
+    result = detect_leukocoria(img)
+    return jsonify({
+        "leukocoria": result,
+        "success": True,
+        "message": "Leukocoria detected" if result else "No leukocoria detected"
+    })
+
+# Error handlers
+@app.errorhandler(413)
+def too_large(e):
+    return jsonify({'success': False, 'error': 'File too large (max 50MB)'}), 413
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({'success': False, 'error': 'Endpoint not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
 
 # ================= MAIN ENTRY POINT =================
 if __name__ == '__main__':

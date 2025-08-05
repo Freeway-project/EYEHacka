@@ -11,24 +11,107 @@ interface FlashlightTestProps {
 type TestPhase = 'ready' | 'countdown' | 'capture' | 'result' | 'error'
 
 // Photo Result Component
-function PhotoResult({ photoUrl, onRetake, onBack }: { 
+function PhotoResult({ photoUrl, onRetake, onBack, analysisResult, isAnalyzing }: { 
   photoUrl: string
   onRetake: () => void 
   onBack: () => void 
+  analysisResult: any
+  isAnalyzing: boolean
 }) {
+  const getResultDisplay = () => {
+    if (isAnalyzing) {
+      return {
+        status: 'analyzing',
+        title: 'Analyzing...',
+        message: 'Please wait while we analyze your flashlight test',
+        color: 'blue'
+      }
+    }
+    
+    if (!analysisResult) {
+      return {
+        status: 'waiting',
+        title: 'Processing...',
+        message: 'Preparing analysis',
+        color: 'gray'
+      }
+    }
+    
+    if (!analysisResult.success) {
+      return {
+        status: 'error',
+        title: 'Analysis Failed',
+        message: analysisResult.message || 'An error occurred during analysis',
+        color: 'red'
+      }
+    }
+    
+    // Handle different result structures
+    const result = analysisResult.result
+    if (typeof result === 'boolean') {
+      return {
+        status: result ? 'normal' : 'abnormal',
+        title: result ? 'Normal Result' : 'Abnormal Result',
+        message: analysisResult.message || (result 
+          ? 'Normal pupil light reflex detected' 
+          : 'Abnormal pupil light reflex - recommend further evaluation'),
+        color: result ? 'green' : 'orange'
+      }
+    }
+    
+    // Handle object result
+    if (typeof result === 'object' && result !== null) {
+      const isNormal = result.normal || result.status === 'normal'
+      return {
+        status: isNormal ? 'normal' : 'abnormal',
+        title: isNormal ? 'Normal Result' : 'Abnormal Result',
+        message: result.message || analysisResult.message || 'Analysis completed',
+        color: isNormal ? 'green' : 'orange'
+      }
+    }
+    
+    // Fallback
+    return {
+      status: 'unknown',
+      title: 'Analysis Complete',
+      message: 'Results are available',
+      color: 'gray'
+    }
+  }
+  
+  const resultDisplay = getResultDisplay()
+  
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white shadow-sm p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <button onClick={onBack} className="mr-3 p-2 rounded-full hover:bg-gray-100 active:bg-gray-200">
+            <button onClick={onBack} className="mr-3 p-2 rounded-full hover:bg-gray-100 active:bg-gray-200" title="Go back">
               <ArrowLeft className="w-6 h-6 text-gray-800" />
             </button>
             <h2 className="text-xl font-bold text-gray-800">Flash Test Results</h2>
           </div>
-          <div className="bg-green-100 px-3 py-1 rounded-full">
-            <span className="text-green-800 text-sm font-medium">✓ Captured</span>
+          <div className={`px-3 py-1 rounded-full ${
+            resultDisplay.color === 'green' ? 'bg-green-100' :
+            resultDisplay.color === 'orange' ? 'bg-orange-100' :
+            resultDisplay.color === 'red' ? 'bg-red-100' :
+            resultDisplay.color === 'blue' ? 'bg-blue-100' :
+            'bg-gray-100'
+          }`}>
+            <span className={`text-sm font-medium ${
+              resultDisplay.color === 'green' ? 'text-green-800' :
+              resultDisplay.color === 'orange' ? 'text-orange-800' :
+              resultDisplay.color === 'red' ? 'text-red-800' :
+              resultDisplay.color === 'blue' ? 'text-blue-800' :
+              'text-gray-800'
+            }`}>
+              {isAnalyzing ? '🔄 Analyzing' :
+               resultDisplay.status === 'normal' ? '✓ Normal' :
+               resultDisplay.status === 'abnormal' ? '⚠ Abnormal' :
+               resultDisplay.status === 'error' ? '❌ Error' :
+               '📄 Complete'}
+            </span>
           </div>
         </div>
       </div>
@@ -40,47 +123,79 @@ function PhotoResult({ photoUrl, onRetake, onBack }: {
             <h3 className="font-semibold text-gray-700">Flashlight Test Photo</h3>
             <p className="text-sm text-gray-500">Captured: {new Date().toLocaleString()}</p>
           </div>
-          <div className="p-4 flex items-center justify-center bg-gray-100" style={{ minHeight: '400px' }}>
+          <div className="p-4 flex items-center justify-center bg-gray-100 min-h-96">
             <img
               src={photoUrl}
               alt="Flashlight test result"
-              className="max-w-full max-h-full object-contain rounded-lg shadow-sm"
-              style={{ transform: 'scaleX(-1)' }} // Un-mirror for display
+              className="max-w-full max-h-full object-contain rounded-lg shadow-sm scale-x-[-1]"
             />
+          </div>
+          
+          {/* Analysis Results */}
+          <div className="p-4 border-t border-gray-200">
+            <div className="text-center">
+              <h4 className="text-lg font-semibold mb-2">{resultDisplay.title}</h4>
+              <p className="text-gray-600 mb-4">{resultDisplay.message}</p>
+              
+              {isAnalyzing && (
+                <div className="flex items-center justify-center space-x-2 mb-4">
+                  <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                  <span className="text-blue-600">Analyzing photo...</span>
+                </div>
+              )}
+              
+              {analysisResult && !isAnalyzing && (
+                <div className="text-sm text-gray-500 space-y-1">
+                  {analysisResult.confidence && (
+                    <p>Confidence: {Math.round(analysisResult.confidence * 100)}%</p>
+                  )}
+                  {analysisResult.fallback && (
+                    <p className="text-orange-600">⚠ Demo mode - API unavailable</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
       
       {/* Bottom Actions */}
       <div className="p-4 bg-white border-t border-gray-200 space-y-3">
-        <div className="text-center mb-3">
-          <p className="text-sm text-gray-600">Photo ready for analysis</p>
-          <p className="text-xs text-gray-400">Flash test completed successfully</p>
-        </div>
-        <button 
-          onClick={onRetake}
-          className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 transition-colors"
-        >
-          Take Another Photo
-        </button>
-        <button 
-          onClick={onBack}
-          className="w-full bg-gray-500 text-white py-3 rounded-full font-semibold hover:bg-gray-600 active:bg-gray-700 transition-colors"
-        >
-          Done
-        </button>
+        {!isAnalyzing && (
+          <>
+            <button 
+              onClick={onRetake}
+              className="w-full bg-blue-500 text-white py-3 rounded-full font-semibold hover:bg-blue-600 active:bg-blue-700 transition-colors"
+            >
+              Take Another Photo
+            </button>
+            <button 
+              onClick={onBack}
+              className="w-full bg-gray-500 text-white py-3 rounded-full font-semibold hover:bg-gray-600 active:bg-gray-700 transition-colors"
+            >
+              Done
+            </button>
+          </>
+        )}
+        {isAnalyzing && (
+          <div className="text-center text-gray-500 py-3">
+            <p>Please wait for analysis to complete...</p>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-test' }: FlashlightTestProps) {
+export default function FlashlightTest({ onBack, apiEndpoint = 'https://eyehacka.onrender.com/api/detect' }: FlashlightTestProps) {
   const [phase, setPhase] = useState<TestPhase>('ready')
   const [countdown, setCountdown] = useState(5)
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
   const [showResult, setShowResult] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<any>(null)
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -330,10 +445,47 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
     }
   }
 
-  // TODO: Implement upload API later
+  // Send photo to API for analysis
   const sendToAPI = async (photoBlob: Blob) => {
-    console.log('Photo captured, ready for API upload:', photoBlob)
-    // API implementation will be added later
+    console.log('📸 Sending photo to API for analysis...')
+    setIsAnalyzing(true)
+    
+    try {
+      const formData = new FormData()
+      formData.append('photo', photoBlob, 'flashlight-test.jpg')
+
+      console.log('📡 Calling API endpoint:', apiEndpoint)
+      
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        body: formData,
+      })
+
+      console.log(`📡 API response: ${response.status} ${response.statusText}`)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`API error (${response.status}): ${errorText}`)
+      }
+
+      const result = await response.json()
+      console.log('✅ Analysis result received:', result)
+      
+      setAnalysisResult(result)
+      
+    } catch (error) {
+      console.error('❌ API call failed:', error)
+      
+      // Set fallback result on error
+      setAnalysisResult({
+        success: false,
+        error: 'Analysis failed',
+        message: error instanceof Error ? error.message : 'Unknown error occurred',
+        fallback: true
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   // Reset with cleanup
@@ -347,6 +499,8 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
     setPhase('ready')
     setShowResult(false)
     setCameraReady(false)
+    setIsAnalyzing(false)
+    setAnalysisResult(null)
   }
 
   // Handle retake from result screen
@@ -369,6 +523,8 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
         photoUrl={capturedPhoto}
         onRetake={handleRetake}
         onBack={onBack}
+        analysisResult={analysisResult}
+        isAnalyzing={isAnalyzing}
       />
     )
   }
@@ -379,7 +535,7 @@ export default function FlashlightTest({ onBack, apiEndpoint = '/api/flashlight-
       {/* Header */}
       <div className="px-4 pt-4">
         <div className="flex items-center py-3">
-          <button onClick={onBack} className="mr-3 p-2 rounded-full hover:bg-gray-800 active:bg-gray-700">
+          <button onClick={onBack} className="mr-3 p-2 rounded-full hover:bg-gray-800 active:bg-gray-700" title="Go back">
             <ArrowLeft className="w-6 h-6 text-white" />
           </button>
           <Flashlight className="w-7 h-7 text-yellow-400 mr-2" />
