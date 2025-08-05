@@ -332,7 +332,7 @@ if (loading) {
     return (
       <FlashLightTest 
         onBack={() => setPhase('vision-screening')} 
-        apiEndpoint="https://eyehacka.onrender.com/api/detect"
+        apiEndpoint="https://eyehacka.onrender.com/detect"
       />
     )
   }

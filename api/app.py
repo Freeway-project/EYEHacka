@@ -228,7 +228,8 @@ def home():
         "endpoints": {
             "health": "GET /health",
             "test": "GET /test", 
-            "upload": "POST /upload"
+            "upload": "POST /upload",
+            "detect": "POST /detect"
         }
     })
 
