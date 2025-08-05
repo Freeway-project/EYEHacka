@@ -332,7 +332,7 @@ if (loading) {
     return (
       <FlashLightTest 
         onBack={() => setPhase('vision-screening')} 
-        apiEndpoint="/api/flashlight-test"
+        apiEndpoint="/api/detect"
       />
     )
   }
